@@ -1,7 +1,7 @@
 {
   "packageName": "Tesla Powerwall Manager",
   "author": "darwinsden (Eric Edwards)",
-  "minimumHEVersion": "https://www.drdsnell.com/projects/hubitat/drivers/SnellRepository.json",
+  "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
   "releaseNotes": "Initial Hubitat Package Manager Release",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
