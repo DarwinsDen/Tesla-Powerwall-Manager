@@ -1,7 +1,7 @@
 /**
  *  Tesla Powerwall Manager 
  * 
- *  Copyright 2019-2022 Eric Edwards (Darwin@DarwinsDen)
+ *  Copyright 2019-2022 Eric Edwards (Darwin/DarwinsDen.com)
  *  
  *  ****** WARNING ****** USE AT YOUR OWN RISK!
  *  This software was developed in the hopes that it will be useful to others, however, 
