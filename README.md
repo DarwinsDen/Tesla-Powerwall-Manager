@@ -1,4 +1,5 @@
-# Powerwall-Manager
+# <img src ='https://user-images.githubusercontent.com/17802474/150582252-efa365c3-36d1-41bd-9d32-6a36d8654ee8.png' align='left' style = 'padding-right: 15px'>Powerwall Manager
+
 Create advanced Tesla Powerwall schedules, control, monitor, and integrate your Powerwall with SmartThings and Hubitat home automation systems.
 
 This is free software. Donations are very much appreciated, but are not required or expected. 
