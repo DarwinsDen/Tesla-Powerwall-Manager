@@ -18,10 +18,11 @@
  * 
  */
 String version() {
-    return "v0.3.41.20220119"
+    return "v0.3.42.20220121"
 }
 
 /* 
+ *	21-Jan-2022 >>> v0.3.42.20220121 - New repository structure
  *	19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
  *	18-Jan-2022 >>> v0.3.40.20220118 - Add option to choose between multiple powerwall sites. Fix on-grid actions.
  *	29-Dec-2021 >>> v0.3.30.20211229 - Merge and update of changes from @x10send: Added support for going off grid via local gateway (Hubitat Only). 
