@@ -5,7 +5,7 @@
   "dateReleased": "2022-01-21",
   "releaseNotes": "Initial Hubitat Package Manager Release",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
-  "documentationLink": "https://darwinsden.com/tesla-powerwall-manager-app-for-the-smartthings-hub/",
+  "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
     {
       "id": "9683e3b2-f9a2-4889-81c8-a9f8ac887d4f",
