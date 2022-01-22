@@ -22,31 +22,31 @@ String version() {
 }
 
 /* 
- *      19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
- *      18-Jan-2022 >>> v0.3.40.20220118 - Add option to choose between multiple powerwall sites. Fix on-grid actions.
- *      29-Dec-2021 >>> v0.3.30.20211229 - Merge and update of changes from @x10send: Added support for going off grid via local gateway (Hubitat Only). 
- *                                         Added ability to specify refresh token in lieu of access token.
- *	24-Oct-2021 >>> v0.3.20.20211024 - UI updates. Added Token expiration notification. Fixes: False off-grid notifications, 
- *                                         multiple SmartThings schedules, Gateway dashboard settings on Hubitat.
- *      02-Jun-2021 >>> v0.3.1e.20210603 - Re-add local gateway connection for Hubitat, Scheduling infrastructure mods. 
- *      25-May-2021 >>> v0.3.0e.20210325 - Tesla auth API change workarounds: use tokens directly, disable gateway direct code. 
- *      02-Jul-2020 >>> v0.2.8e.20200702 - Added dashboard tile display from local gateway iFrame for Hubitat. 
- *      27-May-2020 >>> v0.2.7e.20200527 - Handle extra null battery site info from Tesla. Handle no time zone set. 
- *      02-Mar-2020 >>> v0.2.6e.20200302 - Correct mobile notifications
- *      29-Feb-2020 >>> v0.2.5e.20200229 - Additional http command and query error checks. Added option to pause automations.
- *      19-Feb-2020 >>> v0.2.4e.20200219 - Added battery charge % trigger time and day restriction options.
- *      31-Jan-2020 >>> v0.2.3e.20200131 - Added battery charge % triggers & TBC Strategy scheduling.
- *      22-Jan-2020 >>> v0.2.2e.20200122 - Added Stormwatch on/off scheduling.
- *      16-Jan-2020 >>> v0.2.1e.20200116 - Additional command retry/error checking logic. Hubitat battery% compatibility update.
- *      10-Jan-2020 >>> v0.2.0e.20200110 - Push notification support for Hubitat
- *      04-Jan-2020 >>> v0.1.8e.20200104 - Updated async http call for cross-platform support with Hubitat & SmartThings
- *      03-Jan-2020 >>> v0.1.7e.20200103 - Added access token refresh & command post retry logic 
- *      30-Dec-2019 >>> v0.1.6e.20191230 - Increased reserve percentage value options 
- *      06-Sep-2019 >>> v0.1.5e.20190906 - Updated watchdog to only notify once when issue first occurs and when resolved 
- *      13-Aug-2019 >>> v0.1.4e.20190813 - Added grid/outage status display, notifications, and device on/off controls 
- *      09-Aug-2019 >>> v0.1.3e.20190809 - Added reserve% scheduling & polling interval preferences
- *      29-Jul-2019 >>> v0.1.2e.20190729 - Set reserve percent to 100% in backup-only mode. Added mode scheduling.
- *      23-Jul-2019 >>> v0.1.1e.20190723 - Initial beta release
+ * 19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
+ * 18-Jan-2022 >>> v0.3.40.20220118 - Add option to choose between multiple powerwall sites. Fix on-grid actions.
+ * 29-Dec-2021 >>> v0.3.30.20211229 - Merge and update of changes from @x10send: Added support for going off grid via local gateway (Hubitat Only). 
+ *                                    Added ability to specify refresh token in lieu of access token.
+ * 24-Oct-2021 >>> v0.3.20.20211024 - UI updates. Added Token expiration notification. Fixes: False off-grid notifications, 
+ *                                    multiple SmartThings schedules, Gateway dashboard settings on Hubitat.
+ * 02-Jun-2021 >>> v0.3.1e.20210603 - Re-add local gateway connection for Hubitat, Scheduling infrastructure mods. 
+ * 25-May-2021 >>> v0.3.0e.20210325 - Tesla auth API change workarounds: use tokens directly, disable gateway direct code. 
+ * 02-Jul-2020 >>> v0.2.8e.20200702 - Added dashboard tile display from local gateway iFrame for Hubitat. 
+ * 27-May-2020 >>> v0.2.7e.20200527 - Handle extra null battery site info from Tesla. Handle no time zone set. 
+ * 02-Mar-2020 >>> v0.2.6e.20200302 - Correct mobile notifications
+ * 29-Feb-2020 >>> v0.2.5e.20200229 - Additional http command and query error checks. Added option to pause automations.
+ * 19-Feb-2020 >>> v0.2.4e.20200219 - Added battery charge % trigger time and day restriction options.
+ * 31-Jan-2020 >>> v0.2.3e.20200131 - Added battery charge % triggers & TBC Strategy scheduling.
+ * 22-Jan-2020 >>> v0.2.2e.20200122 - Added Stormwatch on/off scheduling.
+ * 16-Jan-2020 >>> v0.2.1e.20200116 - Additional command retry/error checking logic. Hubitat battery% compatibility update.
+ * 10-Jan-2020 >>> v0.2.0e.20200110 - Push notification support for Hubitat
+ * 04-Jan-2020 >>> v0.1.8e.20200104 - Updated async http call for cross-platform support with Hubitat & SmartThings
+ * 03-Jan-2020 >>> v0.1.7e.20200103 - Added access token refresh & command post retry logic 
+ * 30-Dec-2019 >>> v0.1.6e.20191230 - Increased reserve percentage value options 
+ * 06-Sep-2019 >>> v0.1.5e.20190906 - Updated watchdog to only notify once when issue first occurs and when resolved 
+ * 13-Aug-2019 >>> v0.1.4e.20190813 - Added grid/outage status display, notifications, and device on/off controls 
+ * 09-Aug-2019 >>> v0.1.3e.20190809 - Added reserve% scheduling & polling interval preferences
+ * 29-Jul-2019 >>> v0.1.2e.20190729 - Set reserve percent to 100% in backup-only mode. Added mode scheduling.
+ * 23-Jul-2019 >>> v0.1.1e.20190723 - Initial beta release
  */
 
 import groovy.transform.Field
