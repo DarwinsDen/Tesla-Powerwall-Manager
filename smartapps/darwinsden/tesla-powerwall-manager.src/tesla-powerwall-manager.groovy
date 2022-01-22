@@ -10,7 +10,7 @@
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
@@ -53,10 +53,10 @@ import groovy.transform.Field
 
 definition (
     name: "Tesla Powerwall Manager", namespace: "darwinsden", author: "eedwards", description: "Monitor and control your Tesla Powerwall",
-    importUrl: "https://raw.githubusercontent.com/DarwinsDen/SmartThingsPublic/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
+    importUrl: "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/main/app/tesla-powerwall-manager-app.groovy",
     category: "My Apps",
-    iconUrl: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwLogoAlphaCentered.png",
-    iconX2Url: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwLogoAlphaCentered.png"
+    iconUrl: pwLogo,
+    iconX2Url: pwLogo
 )
 
 preferences {
@@ -86,7 +86,7 @@ private pageMain() {
             if (hubIsSt()) {
                   paragraph app.versionDetails(), title: "PowerWall Manager", required: false, image: pwLogo
             }  else {
-                paragraph "<img src ='${pwLogo}' align='left' style = 'margin-top: -18px; padding-right: 15px'>Powerwall Manager\n ${app.versionDetails()}"
+                paragraph "<img src ='${pwLogo}' align='left' style = 'padding-right: 15px'>Powerwall Manager\n ${app.versionDetails()}"
            }               
         }
         String connectStr
@@ -2534,5 +2534,5 @@ def hrefMenuPage (String page, String titleStr, String descStr, String image, pa
 @Field static final String addIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/add40.png"
 @Field static final String schedIncomplIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/schedIncompl40.png"
 @Field static final String ppBtn = "https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif"
-@Field static final String pwLogo = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwLogo80.png"
+@Field static final String pwLogo = "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/main/images/PWLogo.png"
 @Field static final String trashIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/trash40.png"
