@@ -1,6 +1,6 @@
 {
   "packageName": "Tesla Powerwall Manager",
-  "author": "darwinsden (Eric Edwards)",
+  "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
   "releaseNotes": "Initial Hubitat Package Manager Release",
