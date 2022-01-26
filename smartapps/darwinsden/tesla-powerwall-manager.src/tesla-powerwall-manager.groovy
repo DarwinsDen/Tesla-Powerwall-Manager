@@ -474,7 +474,7 @@ def pageConnectionMethod() {
 }
 
 def pageDashboardTile() {
-    dynamicPage(name: "pageDashboardTile", title:"Powerall Dashboard iFrame Tile", install: false, uninstall: false) {
+    dynamicPage(name: "pageDashboardTile", title:"Powerwall Dashboard iFrame Tile", install: false, uninstall: false) {
         String note = ""
         if (gatewayTileAddress) {
             section {
