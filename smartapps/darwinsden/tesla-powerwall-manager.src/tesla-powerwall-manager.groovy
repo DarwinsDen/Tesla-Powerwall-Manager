@@ -18,11 +18,11 @@
  * 
  */
 String version() {
-    return "v0.3.50.20220122"
+    return "v0.3.50.20280122"
 }
 
 /* 
- * 22-Jan-2022 >>> v0.3.50.20220122 - Initial Hubitat Package Manager Release.
+ * 22-Jan-2022 >>> v0.3.50.20280122 - Gateway debug and ping test.
  * 19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
  * 18-Jan-2022 >>> v0.3.40.20220118 - Add option to choose between multiple powerwall sites. Fix on-grid actions.
  * 29-Dec-2021 >>> v0.3.30.20211229 - Merge and update of changes from @x10send: Added support for going off grid via local gateway (Hubitat Only). 
@@ -104,6 +104,7 @@ private pageMain() {
        if (!state.lastGatewayCheckTime || now() - state.lastGatewayCheckTime > 300000){
            getLocalGwStatus()
        }
+       state.gwPingResults = null
        section(connectStr) {
             hrefMenuPage ("teslaAccountInfo", "Tesla Server Token Information..", state.serverStatusStr, teslaIcon, null, connectedToTeslaServer() ? "complete" : null)
             if (!hubIsSt()) {
@@ -214,6 +215,12 @@ void appButtonHandler(btn) {
    switch (btn) {
        case "deleteSchedule":
           deleteScheduleIndex(state.editingScheduleIndex)
+          break
+       case "gatewayPing":
+          def pingData = hubitat.helper.NetworkUtils.ping("${gatewayAddress}")
+          state.gwPingResults = pingData
+          state.lastGwPingIp = "${gatewayAddress}"
+          logger ("Gateway ping results: ${pingData}","debug") 
           break
        default:
           logger ("Unknown button type: ${btn}","warn")
@@ -444,10 +451,26 @@ private gatewayAccountInfo() {
     return dynamicPage(name: "gatewayAccountInfo", title: "", install: false) {
         state.lastGatewayCheckTime = 0 // New data is being entered. Last server check is no longer valid
         section("Local Gateway Information") {
-               input("gatewayAddress", "text", title: "Powerwall Gateway IP local address (eg. 192.168.1.200)", required: false )
-               input "gatewayPw", "password", title: "Gateway Customer Password", autoCorrect: false, required: false
+            input "gatewayAddress", "text", title: "Powerwall Gateway IP local address (eg. 192.168.1.200)", required: false, submitOnChange: true 
+            input "gatewayPw", "password", title: "Gateway Customer Password", autoCorrect: false, required: false, submitOnChange: true
         }
-      }
+        section() {
+            if (gatewayAddress) {
+                paragraph "<span style='color:DarkGray'>${getLocalGwStatus()}</span>"
+                input "gatewayPing", "button", title: "Test ping gateway", submitOnChange: true, width: 3
+                if (state.gwPingResults && gatewayAddress==state.lastGwPingIp ) {
+                    String result
+                    if (state.gwPingResults.packetLoss) {
+                        result = "<p style='margin-top:8px; color:red'>Issue pinging ${state.lastGwPingIp}</p>"
+                    } else {
+                        result = "<p style='margin-top:8px; color:blue'>Successfully pinged ${state.lastGwPingIp}</p>"
+                    }
+                    paragraph result, width: 9
+                    paragraph "<p>${String.format('%tH:%<tM:%<tS', java.time.LocalDateTime.now())} ${state.gwPingResults}</p>"
+                }
+            }
+        }
+    }
 }
 
 def getConnectionMethodStatus() {
@@ -653,12 +676,15 @@ String getLocalGwStatus() {
         } else {
             logger ("Connecting to local gateway...","debug")
             messageStr = "Could not log in to local gateway at ${gatewayAddress}" 
-            httpPost([uri: "https://${gatewayAddress}/api/login/Basic",
+            String gwUri = "https://${gatewayAddress}/api/login/Basic"
+            logger("Posting to gateway URI: ${gwUri}","trace")
+            httpPost([uri: gwUri,
                       contentType: 'application/json',
                       ignoreSSLIssues: true,
                       query: [username: "customer", password : "${gatewayPw}"]
-                     ]) { resp ->
+                   ]) { resp ->
                 Integer statusCode = resp.getStatus()
+                logger("Gateway response status code: ${statusCode}","debug")
                 if (statusCode == 200) {
                     resp.headers.each {
                         if (it.name == "Set-Cookie") {
@@ -681,7 +707,7 @@ String getLocalGwStatus() {
                             //"Gateway time zone: ${response.data.timezone.toString()}\n"
                     }
                 } else {
-                    messageStr = "Unable to login to gateway. Status: ${statusCode}"
+                    messageStr = "Unable to login to gateway at: ${gatewayAddress}. Status: ${statusCode}"
                 }                  
             }
         }
@@ -689,7 +715,7 @@ String getLocalGwStatus() {
         return messageStr
     } catch (Exception e) {
         logger ("Error getting local gateway status: ${e}","warn")
-        state.gatewayStatusStr = "Error accessing local gateway.\n" + "Please verify your gateway address and password. ${e}" 
+        state.gatewayStatusStr = "Error accessing local gateway at: ${gatewayAddress}.\n" + "Please verify your gateway address and password. ${e}" 
         return state.gatewayStatusStr
     }
 }
@@ -2273,8 +2299,10 @@ void processGatewayMain() {
     //    state.forceGwFailure=true
     //    state.gwAuthCookie = "  "
     //}
+    logger ("Processing processGatewayMain","debug")
     if (gatewayAddress) {
         if (state.gatewayVerified) {
+            logger ("requesting data from gateway","debug")
             if (state.gatewayConnectFailMode) {
                 //was in failure mode, ok now
                 unschedule (reVerifyGateway)
@@ -2284,13 +2312,16 @@ void processGatewayMain() {
             runIn (5, requestGatewaySiteData) 
         } else if (!state.gatewayConnectFailMode) {
             //gateway is not validated, but not yet in failure mode, re-check gateway login
+            logger ("gateway not been verified","debug")
             getLocalGwStatus()
             if (state.gatewayVerified) {
                 //it's good now
+               logger ("gateway now verified","debug")
                runIn (2, requestGatewayMeterData)
                runIn (5, requestGatewaySiteData) 
             } else {
                //Gateway could not be verified. Put in gateway failure mode
+               logger ("entering gateway fail mode","debug")
                state.gatewayConnectFailMode = true
                runEvery1Hour (reVerifyGateway) 
             }
