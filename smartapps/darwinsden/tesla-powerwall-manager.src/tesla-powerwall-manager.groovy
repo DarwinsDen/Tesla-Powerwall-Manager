@@ -461,9 +461,9 @@ private gatewayAccountInfo() {
                 if (state.gwPingResults && gatewayAddress==state.lastGwPingIp ) {
                     String result
                     if (state.gwPingResults.packetLoss) {
-                        result = "<p style='margin-top:8px; color:red'>Issue pinging ${state.lastGwPingIp}</p>"
+                        result = "<p style='margin-top:8px; color:red'>Issue pinging ${state.lastGwPingIp} from Hubitat.</p>"
                     } else {
-                        result = "<p style='margin-top:8px; color:blue'>Successfully pinged ${state.lastGwPingIp}</p>"
+                        result = "<p style='margin-top:8px; color:blue'>Hubitat successfully pinged ${state.lastGwPingIp}.</p>"
                     }
                     paragraph result, width: 9
                     paragraph "<p>${String.format('%tH:%<tM:%<tS', java.time.LocalDateTime.now())} ${state.gwPingResults}</p>"
