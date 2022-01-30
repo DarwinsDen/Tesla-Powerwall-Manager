@@ -3,7 +3,7 @@
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
-  "releaseNotes": "Initial Hubitat Package Manager Release",
+  "releaseNotes": "Correct delta checks. Power updates were not always being sent.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.50"
+      "version": "0.3.51"
     }
   ],
   "drivers": [
