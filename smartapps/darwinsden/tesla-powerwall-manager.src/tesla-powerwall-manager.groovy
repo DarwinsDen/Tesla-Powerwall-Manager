@@ -18,10 +18,11 @@
  * 
  */
 String version() {
-    return "v0.3.50.20220128"
+    return "v0.3.51.20220130"
 }
 
 /* 
+ * 30-Jan-2022 >>> v0.3.51.20220130 - Correct update delta check.
  * 28-Jan-2022 >>> v0.3.50.20220128 - Gateway debug and ping test.
  * 19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
  * 18-Jan-2022 >>> v0.3.40.20220118 - Add option to choose between multiple powerwall sites. Fix on-grid actions.
@@ -54,7 +55,7 @@ import groovy.transform.Field
 
 definition (
     name: "Tesla Powerwall Manager", namespace: "darwinsden", author: "eedwards", description: "Monitor and control your Tesla Powerwall",
-    importUrl: "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/main/app/tesla-powerwall-manager-app.groovy",
+    importUrl: "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
     category: "My Apps",
     iconUrl: pwLogo,
     iconX2Url: pwLogo
@@ -671,8 +672,8 @@ String getLocalGwStatus() {
     try {
         String messageStr
         state.gatewayVerified = false
-        if (gatewayAddress == null) {
-            messageStr = "You are not connected to the local gateway.\nEnter your local gateway IP address.." 
+        if (settings.gatewayAddress == null || settings.gatewayPw == null) {
+            messageStr = "You are not connected to the local gateway.\nEnter your local gateway IP address and password.." 
         } else {
             logger ("Connecting to local gateway...","debug")
             messageStr = "Could not log in to local gateway at ${gatewayAddress}" 
@@ -1557,7 +1558,7 @@ def updateIfChanged(device, attr, value, delta = null) {
     Boolean deltaMet = (currentValue == null || value != null && delta != null && Math.abs((value.toInteger() - currentValue.toInteger()).toInteger()) > delta.toInteger())
     Boolean changed = value != null && value != '' && currentValue != null && currentValue != '' && value.toString() != currentValue.toString() && (!delta || deltaMet)
     logger ("${attr} is: ${value} was: ${currentValue} changed: ${changed}","trace")
-    state.currentAttrValue[attr] = value.toString()
+   
     Boolean heartBeatUpdateDue = false
 
     if (state.lastHeartbeatUpdateTime == null) {
@@ -1566,13 +1567,14 @@ def updateIfChanged(device, attr, value, delta = null) {
     if (state.lastHeartbeatUpdateTime[attr] == null || now() - state.lastHeartbeatUpdateTime[attr] > 3600000) {
         heartBeatUpdateDue = true
     }
-    if (device) {
-        if (changed || heartBeatUpdateDue || (currentValue == null && (value != null && value != ''))) {
+    if (changed || heartBeatUpdateDue || (currentValue == null && (value != null && value != ''))) {
+        state.currentAttrValue[attr] = value.toString()
+        state.lastHeartbeatUpdateTime[attr] = now()
+        if (device) {
             device.sendEvent(name: attr, value: value)
-            state.lastHeartbeatUpdateTime[attr] = now()
+        } else {
+           logger("No Powerwall device to update ${attr} to ${value}","warn")
         }
-    } else {
-        logger("No Powerwall device to update ${attr} to ${value}","warn")
     }
     return changed
 }
