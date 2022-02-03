@@ -17,11 +17,14 @@
  *  for the specific language governing permissions and limitations under the License.
  * 
  */
+
 String version() {
-    return "v0.3.51.20220130"
+    return "v0.3.60.20220202"
 }
 
 /* 
+ * 02-Feb-2022 >>> v0.3.60.20220202 - Add Storm Watch Active. Child device option for enhanced SmartThings/Hubitat integration.
+ *                                    Delta threshold preference setting for power reporting. Enabled dimmer level for reserve control/status.
  * 30-Jan-2022 >>> v0.3.51.20220130 - Correct update delta check.
  * 28-Jan-2022 >>> v0.3.50.20220128 - Gateway debug and ping test.
  * 19-Jan-2022 >>> v0.3.41.20220119 - Cleanup. Ensure refresh token is always scheduled and old SmartThings schedules are cleared.
@@ -82,8 +85,7 @@ preferences {
 }
 
 private pageMain() {
-
-   return dynamicPage(name: "pageMain", title: "", install: true, uninstall: true) { 
+    return dynamicPage(name: "pageMain", title: "", install: true, uninstall: true) { 
         section() {
             if (hubIsSt()) {
                   paragraph app.versionDetails(), title: "PowerWall Manager", required: false, image: pwLogo
@@ -93,7 +95,7 @@ private pageMain() {
         }
         String connectStr
         if (hubIsSt()) {
-             connectStr = "A Tesla server connection is required for access and control of the Powerwall through SmartThings." 
+            connectStr = "A Tesla server connection is required for access and control of the Powerwall through SmartThings." 
         } else {
             connectStr = "You can connect to the Powerwall through the Tesla server, your local gateway, or both. " + 
                  "A Tesla server connection is required for commanding Powerwall state changes. " +
@@ -727,9 +729,10 @@ def pageNotifications() {
             input "notifyWhenVersionChanges", "bool", required: false, defaultValue: false, title: "Powerwall software version changes"
             input "notifyWhenGridStatusChanges", "bool", required: false, defaultValue: false, title: "Grid status changes (power failures)"
             input "notifyWhenReserveApproached", "bool", required: false, defaultValue: false, title: "Powerwall charge level % drops to reserve percentage"
-            input "notifyOfSchedules", "bool", required: false, defaultValue: true, title: "Schedules or charge % actions are being executed by the Powerwall Manager"
+            input "notifyOfSchedules", "bool", required: false, defaultValue: false, title: "Schedules or charge % actions are being executed by the Powerwall Manager"
             input "notifyWhenModesChange", "bool", required: false, defaultValue: false, title: "Powerwall configuration (mode/schedule) changes are detected"
             input "notifyWhenAnomalies", "bool", required: false, defaultValue: true, title: "Anomalies are encountered in the Powerwall Manager"
+            input "notifyWhenStormwatch", "bool", required: false, defaultValue: false, title: "Storm Watch mode is active"
             input "notifyOfTokenAge", "bool", required: false, defaultValue: true, title: "Access token will soon expire (40 days after entering)"
         }
         section() {
@@ -746,15 +749,45 @@ def pageNotifications() {
 
 def pagePwPreferences() {
     dynamicPage(name: "pagePwPreferences", title: "Powerwall Manager Preferences", install: false, uninstall: false) {
-        section("") {
-            input "pollingPeriod", "enum", required: false, title: "Tesla server polling interval", defaultValue: "10 minutes",
-                options: ["Do not poll", "5 minutes", "10 minutes", "30 minutes", "1 hour"]
+        section() {
+            input "pollingPeriod", "enum", required: false, title: "Tesla server polling interval", defaultValue: "10 minutes (default)",
+                options: ["Do not poll" : "Do not poll", "5 minutes" : "5 minutes", "10 minutes" : "10 minutes (default)", 
+                          "30 minutes" : "30 minutes", "1 hour": "1 hour"]
             if (!hubIsSt()) {
-                input "gatewayPollingPeriod", "enum", required: false, title: "Local gateway polling interval", defaultValue: "10 minutes",
-                   options: ["Do not poll", "1 minute", "5 minutes", "10 minutes", "30 minutes", "1 hour"]
+                input "gatewayPollingPeriod", "enum", required: false, title: "Local gateway polling interval", defaultValue: "10 minutes (default)",
+                   options: ["Do not poll" : "Do not poll", "1 minute" : "1 minute", "5 minutes" : "5 minutes", 
+                             "10 minutes" : "10 minutes (default)", "30 minutes" : "30 minutes", "1 hour": "1 hour"]
             } 
-            input "logLevel", "enum", required: false, title: "Log level (default: info)", defaultValue: "info", options: ["none", "trace", "debug", "info", "warn", "error"]
+            
+            input "powerThreshold", "enum", required: false, title: "Power change threshold required for power report updates", defaultValue: "100 Watts (default)", 
+                options: ["10" : "10 Watts", "50" : "50 Watts", "100" : "100 Watts (default)", "500" : "500 Watts", "1000": "1000 Watts"]
+            
+            input "logLevel", "enum", required: false, title: "Log level", defaultValue: "Info (default)", 
+                options: ["none" : "No logging", "trace" : "Trace", "debug" : "Debug", "info" : "Info (default)", "warn" : "Warn", "error" : "Error"]
         }
+        String builtIn
+            String addtl
+            if (hubIsSt()) {
+                builtIn = "'Automations'"
+                addtl = "Node-Red, WebCore, Sharp Tool"
+            } else {
+                builtIn = "'Simple Automation Rules'"
+                addtl = "Node-Red, WebCore, Rule Machine, Sharp Tools"
+            }
+        section () {
+            paragraph "OPTIONAL: Child devices can be created in the Powerwall Manager Powerwall device preference settings, providing " +
+                "additional options for control and monitoring of Powerwall states and power levels via ${getHubType()}."
+        }
+        section (hideable: true, hidden: true, "Additional ${getHubType()} integration information...") {
+            paragraph "1) Enabling child devices in the Powerwall Manager Powerwall device preference settings allows for " +
+                "control and monitoring of Powerwall states and power levels " +
+                "via built-in ${getHubType()} apps such as ${builtIn}. Otherwise " +
+                "rule engines (${addtl}, etc) that support custom commands and attributes are " +
+                "required for extended integration of the Powerwall Manager with ${getHubType()}.\n"
+            paragraph "2) The on/off state of the Powerwall device can be used to indicate whether a grid outage has occured (on=on-grid / off=grid-outage)." 
+            paragraph "3) The 'dimmer' level of the Powerwall device can be used to command and monitor the Powerwall reserve (0-100%)."
+            paragraph "4) The battery level of the Powerwall device will reflect the Powerwall charge level (0-100%)." 
+        }       
     }
 }
 
@@ -869,7 +902,7 @@ def pagePwActions(params) {
                options: ["No Action": "No Action", "0": "0%", "5": "5%", "10": "10%", "15": "15%", "20": "20%", "25": "25%", "30": "30%", "35":
                       "35%", "40": "40%", "45": "45%", "50": "50%",
                       "55": "55%", "60": "60%", "65": "65%", "70": "70%", "75": "75%", "80": "80%", "85": "85%", "90": "90%", "95": "95%", "100": "100%"]
-            input "${prefix}Stormwatch", "enum", required: false, title: "Set Stormwatch enable/disable", options: ["No Action", "Enable Stormwatch", "Disable Stormwatch"]
+            input "${prefix}Stormwatch", "enum", required: false, title: "Set Storm Watch mode enable/disable", options: ["No Action", "Enable Stormwatch", "Disable Stormwatch"]
             input "${prefix}Strategy", "enum", required: false, title: "Set Strategy for Time-Based Control", options: ["No Action", "Cost Saving","Balanced"]
             if (!hubIsSt()){
                 input "${prefix}GridStatus", "enum", required: false, title: "Set Grid Status", options: ["No Action", "Go On Grid","Go Off Grid"]
@@ -910,16 +943,20 @@ Boolean hubIsSt() {
 
 def getPwDevice() {
    def deviceIdStr = null
+   def device
    if (state.childDeviceId) {
       deviceIdStr = state.childDeviceId
-   } else {
+      device = getChildDevice(deviceIdStr)
+   }
+   if (!device) {
       def devices = getChildDevices()
       if (devices.size() > 0) {
           deviceIdStr = getChildDevices().first().getDeviceNetworkId()
           state.childDeviceId = deviceIdStr
+          device = getChildDevice(deviceIdStr)
       }
    } 
-   return getChildDevice(deviceIdStr)
+   return device
 }
 
 private getHubType() {
@@ -1445,12 +1482,14 @@ def startPollingGateway() {
 }
 
 def initialize() {
-    createDeviceForPowerwall()
     unsubscribe()
     unschedule()
-    setSchedules()
-    schedule(new Date(), versionCheck)
+    state.lastHeartbeatUpdateTime = [:]
+    createDeviceForPowerwall()
 
+    setSchedules()
+ 
+    schedule(new Date(), versionCheck)
     if (gatewayTileAddress) {
         runIn (10, createDashboardTile)
     }
@@ -1467,15 +1506,16 @@ def initialize() {
     runIn(15, processGatewayMain)
     if (state.tokenExpiration) {
         state.scheduleRefreshToken = true
-    }
+    }       
 }
 
 private createDeviceForPowerwall() {
     def pwDevice = getPwDevice()
     if (!pwDevice) {
-        def device = addChildDevice("darwinsden", "Tesla Powerwall", "Powerwall" + now().toString(), null, 
-                            [name: "Tesla Powerwall", label: "Tesla Powerwall", completedSetup: true ])
-        log.debug "created powerwall device"
+        String dni = "Powerwall-" + app.id.toString()
+        log.debug "creating Powerwall device dni: ${dni}"
+        def device = addChildDevice("darwinsden", "Tesla Powerwall", dni, null, 
+             [name: "Tesla Powerwall", label: "Powerwall", completedSetup: true ])
     } else {
         logger ("device for Powerwall exists","trace")
         pwDevice.initialize()
@@ -1528,8 +1568,8 @@ Boolean newerVersionExists(latest, current) {
     
 def versionCb (resp, callData) {
     if (resp.status == 200) {
-        if (resp.getJson().latestStableVersion) {
-            state.latestStableVersion = resp.getJson().latestStableVersion
+        if (resp.getJson().apps) {
+            state.latestStableVersion = resp.getJson().apps[0]?.version
             if (newerVersionExists(state.latestStableVersion, app.version())) {
                 if (!state.newVerLogged) {
                    logger ("${app.label} new version ${state.latestStableVersion} is available.","info")
@@ -1558,7 +1598,6 @@ def updateIfChanged(device, attr, value, delta = null) {
     Boolean deltaMet = (currentValue == null || value != null && delta != null && Math.abs((value.toInteger() - currentValue.toInteger()).toInteger()) > delta.toInteger())
     Boolean changed = value != null && value != '' && currentValue != null && currentValue != '' && value.toString() != currentValue.toString() && (!delta || deltaMet)
     logger ("${attr} is: ${value} was: ${currentValue} changed: ${changed}","trace")
-   
     Boolean heartBeatUpdateDue = false
 
     if (state.lastHeartbeatUpdateTime == null) {
@@ -1685,11 +1724,15 @@ def processGwMeterResponse(response, callData) {
         def data = response.json
         logger ("Gw meter agg: ${data}","trace") 
         def child = getPwDevice()
-        updateIfChanged(child, "loadPower", data.load.instant_power.toInteger(), 100)
-        updateIfChanged(child, "gridPower", data.site.instant_power.toInteger(), 100)
-        updateIfChanged(child, "power", data.site.instant_power.toInteger(), 100)
-        updateIfChanged(child, "solarPower", data.solar.instant_power.toInteger(), 100)
-        updateIfChanged(child, "powerwallPower", data.battery.instant_power.toInteger(), 100)
+        Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
+        if (updateIfChanged(child, "loadPower", data.load.instant_power.toInteger(), powerDelta) | 
+           updateIfChanged(child, "gridPower", data.site.instant_power.toInteger(), powerDelta) | 
+           updateIfChanged(child, "power", data.site.instant_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "solarPower", data.solar.instant_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "powerwallPower", data.battery.instant_power.toInteger(), powerDelta)) 
+        {
+            child.refreshChildDevices()
+        }
     } else {
         logger ("Error procesing gateway meter data. Response status: ${response.getStatus()}","warn")
         if (response.getStatus() == 401 || response.getStatus() == 403) {
@@ -1799,7 +1842,11 @@ void updateGridStatus(String gridStatus) {
 
 void updateOpModeAndReserve(String opMode, def reservePercent) {
     def pwDevice = getPwDevice()
+    Boolean reserveChanged
+    Boolean opModeChanged
     if (reservePercent || reservePercent == 0) { //protect against null/bad data
+        reserveChanged = updateIfChanged(pwDevice, "reservePercent", reservePercent)
+        updateIfChanged(pwDevice, "level", reservePercent)
         updateIfChanged(pwDevice, "reservePercent", reservePercent)
         updateIfChanged(pwDevice, "reserve_pending", reservePercent)
     }
@@ -1815,10 +1862,14 @@ void updateOpModeAndReserve(String opMode, def reservePercent) {
             opModePretty = opMode
             logger ("Unrecognized Op Mode: ${opMode}","info")
         } 
-        Boolean changed = updateIfChanged(pwDevice, "currentOpState", opModePretty)
-        if (changed && notifyWhenModesChange?.toBoolean()) {
+        opModeChanged = updateIfChanged(pwDevice, "currentOpState", opModePretty)
+        if (opModeChanged && notifyWhenModesChange?.toBoolean()) {
             sendNotificationMessage("Powerwall op mode changed to ${opModePretty}")
         }
+    }
+   
+    if (reserveChanged || opModeChanged) {
+        pwDevice.refreshChildDevices()
     }
 }
 
@@ -1876,6 +1927,35 @@ def processSiteResponse(response, callData) {
     }
 }
 
+def processSiteLiveStatusResponse(response, callData) {
+    logger ("processing server site live status response","debug")
+    if (!response.hasError()) {
+        def data = response.json.response
+        logger ("Site Live Status: ${data}","trace")
+        Boolean stormwatchMode = data?.storm_mode_active
+        def child = getPwDevice()
+        Boolean changed = updateIfChanged(child, "stormwatchActive", data?.storm_mode_active) 
+        if (changed) {
+            child.refreshChildDevices()
+            if (settings.notifyWhenStormwatch) {
+                if (stormwatchMode) {
+                    sendNotificationMessage("Powerwall Storm Watch mode is active.")
+                } else {
+                    sendNotificationMessage("Powerwall Storm Watch is no longer active.")
+                }
+            }
+        }
+    } else {
+        if (response.getStatus() != 401) {
+            if (callData?.attempt && callData.attempt < 2) {
+                runIn(30, processSiteLiveStatusResponse, [data: [attempt: callData.attempt + 1]])
+            } else {
+                logger ("Site live status response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
+            }
+        }
+    }
+}
+
 def processPowerwallResponse(response, callData) {
     //     log.debug "${callData}"
     logger ("processing server powerwall response","debug")
@@ -1893,12 +1973,15 @@ def processPowerwallResponse(response, callData) {
             updateIfChanged(child, "batteryPercent", bpRounded)
             runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: data.backup.backup_reserve_percent]])
         }
-
-        updateIfChanged(child, "loadPower", data.power_reading.load_power[0].toInteger(), 100)
-        updateIfChanged(child, "gridPower", data.power_reading.grid_power[0].toInteger(), 100)
-        updateIfChanged(child, "power", data.power_reading.grid_power[0].toInteger(), 100)
-        updateIfChanged(child, "solarPower", data.power_reading.solar_power[0].toInteger(), 100)
-        updateIfChanged(child, "powerwallPower", data.power_reading.battery_power[0].toInteger(), 100)
+        Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
+        if (updateIfChanged(child, "loadPower", data.power_reading.load_power[0].toInteger(), powerDelta) |
+           updateIfChanged(child, "gridPower", data.power_reading.grid_power[0].toInteger(), powerDelta) |
+           updateIfChanged(child, "power", data.power_reading.grid_power[0].toInteger(), powerDelta) |
+           updateIfChanged(child, "solarPower", data.power_reading.solar_power[0].toInteger(), powerDelta) |
+           updateIfChanged(child, "powerwallPower", data.power_reading.battery_power[0].toInteger(), powerDelta)) 
+        {
+           child.refreshChildDevices()
+        }
         if (!connectedToGateway()) {
             //Do not update if connected to gateway, to prevent status data thrashing
             updateGridStatus (data.grid_status)
@@ -1906,7 +1989,10 @@ def processPowerwallResponse(response, callData) {
         //updateIfChanged(child, "sitenameAndVers", data.site_name.toString() + ' ' + '\n' + gridStatusString)
         updateIfChanged(child, "siteName", data.site_name.toString())
         if (data?.user_settings?.storm_mode_enabled != null) {
-             updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
+            def changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
+            if (changed) {
+                pwDevice.refreshChildDevices()
+            }
         }
         state.lastCompletedTime = now()
     } else {
@@ -1955,6 +2041,7 @@ def requestSiteData(data) {
         //log.debug "requesting site info"
         if (state.serverVerified) {
             httpAuthAsyncGet('processSiteResponse', "/api/1/energy_sites/${state.energySiteId}/site_info", tryCount)
+            httpAuthAsyncGet('processSiteLiveStatusResponse', "/api/1/energy_sites/${state.energySiteId}/live_status", tryCount)
         }
         state.lastSiteRequestTime = now()
     }
@@ -2003,14 +2090,16 @@ def commandOpMode(data) {
 
 def setSelfPoweredMode(child) {
     if (child) {    
-        child.sendEvent(name: "currentOpState", value: "Pending Self-Powered", displayed: false)
+        //child.sendEvent(name: "currentOpState", value: "Pending Self-Powered", displayed: false)
+        updateIfChanged(child, "currentOpState", "Pending Self-Powered") 
     }
     runIn(1, commandOpMode, [data: [mode: "self_consumption"]])
 }
 
 def setTimeBasedControlMode(child) {
     if (child) {
-        child.sendEvent(name: "currentOpState", value: "Pending Time-Based", displayed: false)
+        //child.sendEvent(name: "currentOpState", value: "Pending Time-Based", displayed: false)
+        updateIfChanged(child, "currentOpState", "Pending Time-Based")
     }
     runIn(1, commandOpMode, [data: [mode: "autonomous"]])
 }
@@ -2018,6 +2107,7 @@ def setTimeBasedControlMode(child) {
 def setBackupOnlyMode(child) {
     if (child) {
         child.sendEvent(name: "currentOpState", value: "Pending Backup-Only", displayed: false)
+        updateIfChanged(child, "currentOpState", "Pending Backup-Only")
     }
     runIn(1, commandOpMode, [data: [mode: "backup"]])
     //runIn(1, commandBackupReservePercent, [data: [reservePercent: 100]])
@@ -2056,17 +2146,17 @@ def commandTouStrategy(data) {
 }
 
 def setTbcBalanced(child) {
-    //log.debug "commanding TBC Balanced"
     if (child) {
-        child.sendEvent(name: "currentStrategy", value: "Pending Balanced", displayed: false)
+        //child.sendEvent(name: "currentStrategy", value: "Pending Balanced", displayed: false)
+        updateIfChanged(child, "currentStrategy", "Pending Balanced")
     }
     runIn(2, commandTouStrategy, [data: [strategy: "balanced"]])
 }
 
 def setTbcCostSaving(child) {
-    //log.debug "commanding TBC CostSaving"
     if (child) {
         child.sendEvent(name: "currentStrategy", value: "Pending Cost-Saving", displayed: false)
+        updateIfChanged(child, "currentStrategy", "Pending Cost-Saving")
     }
     runIn(2, commandTouStrategy, [data: [strategy: "economics"]])
 }
@@ -2121,7 +2211,7 @@ def goOnGrid(child){
 }
 
 def setBackupReservePercent(child, value) {
-    if (value && value.toInteger() >= 0 && value.toInteger() <= 100) {
+    if (value != null && value.toInteger() >= 0 && value.toInteger() <= 100) {
         runIn(2, commandBackupReservePercent, [data: [reservePercent: value.toInteger()]])
     } else {
         log.debug "Backup reserve percent of: ${value} not sent. Must be between 0 and 100"
@@ -2161,6 +2251,7 @@ def refresh(child) {
     if (logLevel == "debug" | logLevel == "trace") {
         logger ("refresh requested","debug")
     }
+    state.lastHeartbeatUpdateTime = [:]
     runIn(1, processServerMain)
     runIn(2, processGatewayMain)
     runIn(30, processWatchdog)
@@ -2539,12 +2630,12 @@ def hrefMenuPage (String page, String titleStr, String descStr, String image, pa
         href page, description: descDiv, title: titleDiv, required: false, params : params, state : state
     }
 }
-
+          
 // Constants
 @Field static final Map logLevels = ["none":0, "trace":1,"debug":2,"info":3, "warn":4,"error":5]
 @Field static final String teslaUrl = "https://owner-api.teslamotors.com"
 @Field static final String ddUrl = "https://darwinsden.com/powerwall/"
-@Field static final String versionUrl = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/metadata/powerwallManagerVersion.json"
+@Field static final String versionUrl = "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/packageManifest.json"
 @Field static final String teslaBearerTokenEndpoint = "https://auth.tesla.com/oauth2/v3/token"
 @Field static final String teslaBearerTokenGrantType = "refresh_token"
 @Field static final String teslaBearerTokenClientId = "ownerapi"
@@ -2553,6 +2644,7 @@ def hrefMenuPage (String page, String titleStr, String descStr, String image, pa
 @Field static final String teslaAccessTokenAuthGrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 @Field static final String teslaAccessTokenAuthClientId = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
 @Field static final Integer maxSmartThingsSchedules = 15
+
 // Icons
 @Field static final String teslaIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/Tesla-Icon40.png"
 @Field static final String gatewayIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/gateway.png"
