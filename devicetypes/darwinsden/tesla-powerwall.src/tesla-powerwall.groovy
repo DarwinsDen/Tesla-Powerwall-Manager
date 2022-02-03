@@ -11,7 +11,8 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
- *
+
+ *  02-Feb-2022 >>> v0.2.30.20220202 - Add child device creation option for additional SmartThings and Hubitat control/display capability
  *  29-Dec-2021 >>> v0.2.20.20211229 - Merge from @x10send: Added Off Grid and Refresh Token Support
  *	24-Oct-2021 >>> v0.2.10.20211024 - Added argument for setBackupReservePercent
  *	25-May-2020 >>> v0.2.0e.20200525 - Updated reserve +/- adjust for Hubitat
@@ -24,9 +25,9 @@
  */
 
 metadata {
-    definition(name: "Tesla Powerwall", namespace: "darwinsden", author: "eedwards") {
+      definition(name: "Tesla Powerwall", namespace: "darwinsden", author: "eedwards") {
+               
         capability "Battery"
-        capability "Energy Meter"
         capability "Power Meter"
         capability "Power Source"
         capability "Actuator"
@@ -36,7 +37,7 @@ metadata {
         capability "Health Check"
         capability "Refresh"
         capability "Switch"
-
+        
         attribute "reservePercent", "number"
         attribute "reserve_pending", "number"
         attribute "solarPower", "number"
@@ -47,8 +48,10 @@ metadata {
         attribute "currentStrategy", "string"
         attribute "siteName", "string"
         attribute "pwVersion", "string"
+        attribute "stormwatch", "enum", ["true", "false"]
         attribute "gridStatus", "enum", ["offGrid", "onGrid"]
         attribute "pwTile", "string"
+        attribute "stormwatchActive", "enum", ["true", "false"]
 
         command "setBackupReservePercent", ["number"]
         command "raiseBackupReserve"
@@ -68,105 +71,22 @@ metadata {
     preferences {}
 
     simulator {}
+    
+    preferences {
+        input name: "createChildStateDevices", type: "bool", title: "Create child switch devices for Powerwall states (Self-Powered, Time-Based Control", 
+                    defaultValue: false, submitOnChange: true
+        input name: "createStormwatchDevices", type: "bool", title: "Create child switch devices for Storm Watch status (Storm Watch Enabled, Storm Watch Active)", 
+                    defaultValue: false, submitOnChange: true
+        input name: "createChildMeterDevices", type: "bool", title: "Create child meter devices for Powerwall power levels (Solar, Grid, Home, Powerwall)", 
+                    defaultValue: false, submitOnChange: true
+	}
+}
 
-    tiles(scale: 2) {
-        multiAttributeTile(name: "powerwallDisplay", type: "thermostat", width: 6, height: 4, canChangeIcon: true) {
-            tileAttribute("device.reservePercent", key: "PRIMARY_CONTROL") {
-                attributeState("default", label: 'Reserve: ${currentValue}%', unit: "percentage", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwLogoAlpha5.png", defaultState: true)
-            }
-            tileAttribute("device.reserve_pending", key: "VALUE_CONTROL") {
-                attributeState("default", action: "lowerBackupReserve")
-                attributeState("VALUE_UP", unit: "percentage", action: "raiseBackupReserve")
-                attributeState("VALUE_DOWN", unit: "percentage", action: "lowerBackupReserve")
-            }
-            tileAttribute("device.batteryPercent", key: "SECONDARY_CONTROL") {
-                attributeState("default", label: '${currentValue}%', unit: "percentage", defaultState: true)
-            }
-            tileAttribute('device.currentOpState', key: "OPERATING_STATE") {
-                attributeState('Self-Powered', label: '${currentValue}', backgroundColor: "#81bb49") // green
-                attributeState('Time-Based Control', label: '${currentValue}', backgroundColor: "#9b9bfc") // purple
-                attributeState('Backup-Only', label: '${currentValue}', backgroundColor: "#5a91d4") // blue
-                attributeState('Pending Self-Powered', label: '${currentValue}', backgroundColor: "#d28de0") // magenta
-                attributeState('Pending Time-Based Control', label: '${currentValue}', backgroundColor: "#d28de0") // magenta
-                attributeState('Pending Backup-Only', label: '${currentValue}', backgroundColor: "#d28de0") // magenta
-                attributeState('default', label: '${currentValue}', backgroundColor: "#d28de0", defaultState: true) //gray
-            }
-        }
-        valueTile("sitename", "device.sitenameAndVers", width: 4, height: 1, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: '${currentValue}', backgroundColor: "#ffffff", action: ""
-        }
-        valueTile("reserve", "device.reservePercent", width: 2, height: 2, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: 'Reserve: ${currentValue}%', action: ""
-        }
-        standardTile("blankSkinny", "device.blank", width: 4, height: 1) {
-            state("blank", label: "", backgroundColor: "#ffffff")
-        }
-        valueTile("solar", "device.solarPower", width: 2, height: 2) {
-            state("solarPower", label: '\u2600\n${currentValue}\nW', unit: "W", backgroundColor: "#F9B732")
-        }
-        standardTile("blank", "device.blank", width: 1, height: 1) {
-            state("blank", label: "", backgroundColor: "#ffffff")
-        }
-        valueTile("battery", "device.batteryPercent", width: 2, height: 2) {
-            state("battery", label: ': Battery :\n ${currentValue}% \n', unit: "%", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/powerwall-Image.png")
-        }
-        valueTile("load", "device.loadPower", width: 2, height: 2) {
-            state("loadPower", label: '\u2302\n${currentValue}\nW', unit: "W", backgroundColor: "#3265CB")
-        }
-        valueTile("grid", "device.gridPower", width: 2, height: 2) {
-            state("gridPower", label: '\u2361\n${currentValue}\nW', unit: "W", backgroundColor: "#989286")
-        }
-        valueTile("power", "device.power", width: 2, height: 2) {
-            state("power", label: '${currentValue}\nW', unit: "W", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwLogoAlphaCentered.png")
-        }
-        valueTile("powerwall", "device.powerwallPower", width: 2, height: 2) {
-            state("powerwallPower", label: '\u2752\n${currentValue}\nW', unit: "W", backgroundColor: "#2ec214")
-        }
-        standardTile("refresh", "device.state", decoration: "flat", width: 2, height: 1) {
-            state "default", action: "refresh.refresh", icon: "st.secondary.refresh"
-        }
-        valueTile("strategy", "device.currentStrategy", width: 2, height: 1, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: '${currentValue}', backgroundColor: "#ffffff", action: ""
-        }
-        valueTile("commandBar", "device.commands", width: 4, height: 1, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: '', action: "", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/pwControls3.png"
-        }
-        valueTile("blankTall", "device.commands", width: 1, height: 2, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: '', action: ""
-        }
-        valueTile("stormwatch", "device.stormwatch", width: 2, height: 1, decoration: "flat", inactiveLabel: false, canChangeIcon: true) {
-            state "default", label: '${currentValue}', action: ""
-        }
-        standardTile("backup", "device.currentOpState", inactiveLabel: false, width: 2, height: 2) {
-            state "default", label: 'Backup', action: "setBackupOnlyMode", backgroundColor: "#ffffff", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Backup-Only", label: 'Backup', action: "setBackupOnlyMode", backgroundColor: "#79b821", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Pending Backup-Only", label: 'Backup', action: "setBackupOnlyMode", backgroundColor: "#2179b8", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-        }
-        standardTile("self-consumption", "device.currentOpState", inactiveLabel: false, width: 2, height: 2) {
-            state "default", label: 'Self-P', action: "setSelfPoweredMode", backgroundColor: "#ffffff", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Self-Powered", label: 'Self-P', action: "setSelfPoweredMode", backgroundColor: "#79b821", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Pending Self-Powered", label: 'Self-P', action: "setSelfPoweredMode", backgroundColor: "#2179b8", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-        }
-        standardTile("time-based", "device.currentOpState", inactiveLabel: false, width: 2, height: 2) {
-            state "default", label: 'TBC', action: "setTimeBasedControlMode", backgroundColor: "#ffffff", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Time-Based Control", label: 'TBC', action: "setTimeBasedControlMode", backgroundColor: "#79b821", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Pending Time-Based", label: 'TBC', action: "setTimeBasedControlMode", backgroundColor: "#2179b8", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-        }
-        standardTile("cost-saving", "device.currentStrategy", inactiveLabel: false, width: 2, height: 2) {
-            state "default", label: 'Cost-Sav', action: "setTbcCostSaving", backgroundColor: "#ffffff", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Cost-Saving", label: 'Cost-Sav', action: "setTbcCostSaving", backgroundColor: "#79b821", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Pending Cost-Saving", label: 'Cost-Sav', action: "setTbcCostSaving", backgroundColor: "#2179b8", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-        }
-        standardTile("balanced", "device.currentStrategy", inactiveLabel: false, width: 2, height: 2) {
-            state "default", label: 'Bal', action: "setTbcBalanced", backgroundColor: "#ffffff", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Balanced", label: 'Bal', action: "setTbcBalanced", backgroundColor: "#79b821", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-            state "Pending Balanced", label: 'Bal', action: "setTbcBalanced", backgroundColor: "#2179b8", icon: "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/wavex1-1.png"
-        }
-        main(["power","battery"])
-        details(["powerwallDisplay", "sitename", "refresh", "solar", "grid", "battery", "load", "powerwall", "strategy", "stormwatch", "blank",
-            "commandBar", "blank", "backup", "self-consumption", "time-based", "blankTall", "balanced", "cost-saving", "blankTall"
-        ])
-    }
+def setLevel(level, rate=null) {
+    String desc = "setting ${device.displayName}: level to ${level}%"
+    Map evt = [name: "level", value: level, type: "%", descriptionText: desc]
+    setBackupReservePercent(level.toInteger())
+    sendEvent(evt)
 }
 
 def setBackupOnlyMode() {
@@ -258,28 +178,107 @@ def raiseBackupReserve(value) {
 }
 
 def installed() {
-    log.debug "Installed"
+    log.debug "${device} Installed"
     initialize()
+    return []
 }
 
 def updated() {
-    log.debug "Updated"
+    log.debug "${device} Updated"
     initialize()
+    return []
+}
+
+def refreshChildDevices() {
+    runIn (1, refreshMode)
+    runIn (1, refreshMeters)
 }
 
 def refresh() {
-    //log.debug "Executing refresh"
+    refreshMode ()
+    refreshMeters ()
     def status = parent.refresh(this)
 }
 
 def poll() {
-  //log.debug "poll()"
   def status = parent.refresh(this)
 }
 
 def initialize() {
-    //log.debug "initializing PW device"
+    if (settings.createChildStateDevices) {
+        createChildSwitch ("Self-Powered")
+        createChildSwitch ("Time-Based Control")
+    } else {
+        removeChild ("Self-Powered")
+        removeChild ("Time-Based Control")
+    }
+    if (settings.createChildMeterDevices) {
+        createChildMeter ("Solar Power")
+        createChildMeter ("Grid Power")
+        createChildMeter ("Powerwall Power")
+        createChildMeter ("Home Power")
+    } else {
+        removeChild ("Solar Power")
+        removeChild ("Grid Power")
+        removeChild ("Powerwall Power")
+        removeChild("Home Power")
+    }
+    if (settings.createStormwatchDevices) {
+        createChildSwitch ("Storm Watch Enabled")
+        createChildSwitch ("Storm Watch Active")
+    } else {
+        removeChild ("Storm Watch Enabled")
+        removeChild ("Storm Watch Active")
+    }
+    refresh()
 }
+
+def createChildSwitch (String suffix) {
+    def child = getChildDev (suffix)
+    if (!child) {
+        log.info "Creating ${suffix} Child Switch Device"
+        if (hubIsSt()) {
+            child = addChildDevice("SmartThings", "Child Switch", getChildDni(suffix), null,
+                 [label: "${device.displayName} - ${suffix}", isComponent: false])
+        } else {
+            child = addChildDevice("hubitat", "Generic Component Switch", getChildDni(suffix),[completedSetup: true, label: "${device.displayName} - ${suffix}",
+                    isComponent: false] )
+            child.updateSetting("txtEnable",[value:false, type:"bool"]) //turn of logging on child device
+        }
+    }
+}      
+
+def removeChild (String suffix) {
+    def child = getChildDev (suffix)
+    if (child) {
+        removeChildDevice(child)
+    }
+}     
+
+void removeChildDevice(child) {
+    try {
+        log.info "Removing ${child.displayName} "
+		deleteChildDevice(child.deviceNetworkId)
+    } 
+    catch (e) {
+        log.warn "Issue removing ${child?.displayName}"
+    }
+}                               
+                    
+def createChildMeter(String suffix) {
+    def child = getChildDev (suffix)
+    if (!child) {
+        log.info "Creating ${suffix} Child Meter Device"
+        if (hubIsSt()) {
+            child = addChildDevice("SmartThings", "Child Energy Meter", getChildDni(suffix), null,
+                    [label: "${device.displayName} - ${suffix}", isComponent: false])
+        } else {
+            child = addChildDevice("hubitat", "Generic Component Power Meter", getChildDni(suffix),
+			     [completedSetup: true, label: "${device.displayName} - ${suffix}",isComponent: false] )
+            child.updateSetting("txtEnable",[value:false, type:"bool"]) //turn of logging on child device
+        }
+    }
+} 
 
 def ping() {
 	log.debug "pinged"	
@@ -287,4 +286,112 @@ def ping() {
 
 def parse(String description) {
     log.debug "${description}"
+}
+
+def childOn (dni) {
+    if (dni.toString().endsWith("Self-Powered")) {
+        setSelfPoweredMode()
+    } else if (dni.toString().endsWith("Time-Based Control")) {
+        setTimeBasedControlMode()
+    } else if (dni.toString().endsWith("Storm Watch Enabled")) {
+        enableStormwatch()
+    }
+}
+
+def childOff (dni) {
+  if (dni.toString().endsWith("Self-Powered")) {
+     setTimeBasedControlMode()
+  } else if (dni.toString().endsWith("Time-Based Control")) {
+     setSelfPoweredMode()
+  } else if (dni.toString().endsWith("Storm Watch Enabled")) {
+     disableStormwatch()
+  }
+}
+
+def componentOff (dni) { //Hubitat
+    childOff (dni) 
+}
+
+def componentOn (dni) { //Hubitat
+    childOn (dni) 
+}
+
+def childRefresh (device) {
+    refresh() //ST (not invoked?)
+}
+
+def componentRefresh (device) {
+    refresh() //Hubitat
+}
+
+void sendEventIfChanged(def dev, String name, value, String type=null, units="") {
+    if (dev && dev.currentValue(name).toString() != value.toString()) {
+        String desc = "${dev.displayName}: ${name} is ${value}${units}"
+		Map evt = [name: name, value: value, descriptionText: desc]
+		if (type) {
+			evt.type = type
+		}
+		if (unit) {
+			evt.unit = units
+		}
+		dev.sendEvent(evt)  
+    }
+}
+
+def getChildDni (String suffix) {
+    return "${device.deviceNetworkId}-${suffix}".toString()
+}
+
+def getChildDev (String suffix) {
+    return childDevices?.find {it.deviceNetworkId == getChildDni(suffix)} 
+}
+
+def refreshMode (String mode) {
+    if (!mode) {
+        mode = device.currentValue("currentOpState").toString()
+    }
+    if (mode == "Self-Powered") {
+        sendEventIfChanged(getChildDev("Time-Based Control"), "switch", "off")
+        sendEventIfChanged(getChildDev("Self-Powered"), "switch", "on")
+    } else if (mode == "Time-Based Control") {
+        sendEventIfChanged(getChildDev("Time-Based Control"), "switch", "on")
+        sendEventIfChanged(getChildDev("Self-Powered"), "switch", "off")
+    }
+    if (device.currentValue("stormwatch")?.toBoolean()) {
+        sendEventIfChanged(getChildDev("Storm Watch Enabled"), "switch", "on")
+    } else {
+        sendEventIfChanged(getChildDev("Storm Watch Enabled"), "switch", "off")
+    }
+    if (device.currentValue("stormwatchActive")?.toBoolean()) {
+        sendEventIfChanged(getChildDev("Storm Watch Active"), "switch", "on")
+    } else {
+        sendEventIfChanged(getChildDev("Storm Watch Active"), "switch", "off")
+    }
+    if (hubIsSt() && device.currentValue("powerSource") != mode) {
+        sendEvent([name: "powerSource", value: mode])
+    }
+}
+  
+def refreshMeters () {
+    sendEventIfChanged(getChildDev("Solar Power"), "power", device.currentValue("solarPower").toString(), null, "W")
+    sendEventIfChanged(getChildDev("Grid Power"), "power", device.currentValue("gridPower").toString(), null, "W")
+    sendEventIfChanged(getChildDev("Powerwall Power"), "power", device.currentValue("powerwallPower").toString(), null, "W")
+    sendEventIfChanged(getChildDev("Home Power"), "power", device.currentValue("loadPower").toString(), null, "W")
+}
+
+private getHubType() {
+    String hubType = "SmartThings"
+    if (state.hubType == null) {
+        try {
+            include 'asynchttp_v1'
+        } catch (e) {
+            hubType = "Hubitat"
+        }
+        state.hubType = hubType
+    }
+    return state.hubType
+} 
+
+Boolean hubIsSt() {
+    return (getHubType() == "SmartThings")
 }
