@@ -3,7 +3,7 @@
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
-  "releaseNotes": "v0.3.60:\n- Added Storm Watch Active status (attribute: stormwatchActive).\n- Added Child device creation option for enhanced SmartThings/Hubitat integration optiona.\n- Added Delta threshold preference setting for power reporting.\n- Enabled dimmer level for reserve control/status.",
+  "releaseNotes": "v0.3.61:\n- Added contact sensor capability to Powerwall device to indicate grid status (open=off-grid) to facilitate Alexa voice alerts.\n- Added indication of next schedule run time when entering schedules.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.60"
+      "version": "0.3.61"
     }
   ],
   "drivers": [
@@ -24,7 +24,7 @@
       "namespace": "darwinsden",
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/devicetypes/darwinsden/tesla-powerwall.src/tesla-powerwall.groovy",
       "required": true,
-      "version": "0.2.30"
+      "version": "0.2.31"
     }
   ]
 }
