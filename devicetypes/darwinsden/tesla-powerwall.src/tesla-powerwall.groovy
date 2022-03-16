@@ -12,6 +12,7 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
 
+ *  15-Mar-2022 >>> v0.2.31.20220315 - Added contact sensor capability to indicate grid status (open=off-grid).
  *  02-Feb-2022 >>> v0.2.30.20220202 - Add child device creation option for additional SmartThings and Hubitat control/display capability
  *  29-Dec-2021 >>> v0.2.20.20211229 - Merge from @x10send: Added Off Grid and Refresh Token Support
  *	24-Oct-2021 >>> v0.2.10.20211024 - Added argument for setBackupReservePercent
@@ -28,6 +29,7 @@ metadata {
       definition(name: "Tesla Powerwall", namespace: "darwinsden", author: "eedwards") {
                
         capability "Battery"
+        capability "ContactSensor"
         capability "Power Meter"
         capability "Power Source"
         capability "Actuator"
