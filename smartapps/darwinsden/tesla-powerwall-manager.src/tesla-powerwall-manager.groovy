@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.60.20220202"
+    return "v0.3.61.20220315"
 }
 
 /* 
+ * 15-Mar-2022 >>> v0.3.61.20220315 - Added contact sensor capability to PW device to indicate grid status (open=off-grid).
  * 02-Feb-2022 >>> v0.3.60.20220202 - Add Storm Watch Active. Child device option for enhanced SmartThings/Hubitat integration.
  *                                    Delta threshold preference setting for power reporting. Enabled dimmer level for reserve control/status.
  * 30-Jan-2022 >>> v0.3.51.20220130 - Correct update delta check.
@@ -128,6 +129,7 @@ private pageMain() {
             }
             hrefMenuPage ("pagePwPreferences", "Powerwall Manager General Preferences..", "", cogIcon, null)
         }
+        
         section() {
             String freeMsg = "This is free software. Donations are very much appreciated, but are not required or expected."
             if (hubIsSt()) {
@@ -266,6 +268,7 @@ def pageScheduleOptions(params) {
                 String whenString = getWhenString(schedVal(schedNum,"Time"), schedVal(schedNum,"Days"),schedVal(schedNum,"Months"))
                 Boolean complete = scheduleValid(schedVal(schedNum,"Time"), schedVal(schedNum,"Days"))
                 href "pageScheduleWhen", title: whenString, state: complete ? "complete" : null, description: "", params: [schedIndex: schedIndex]
+                paragraph getNextScheduleTime(schedNum)
             }
             section("") {
                 input "schedule${schedNum}Name", "text", required: false, title: "Name this schedule (optional)"
@@ -294,12 +297,14 @@ def pageScheduleWhen(params) {
     Integer schedNum = state.scheduleList[schedIndex]
     dynamicPage(name: "pageScheduleWhen", title: schedNameFromIndex(schedIndex), install: false, uninstall: false) { 
         section("Select when to perform these actions:") {
-              input "schedule${schedNum}Time", "time", required: false, title: "At what time? (required)"
-              input "schedule${schedNum}Days", "enum", required: false, title: "On which days? (required)", multiple: true,
-                  options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-              input "schedule${schedNum}Months", "enum", title: "In which months? (optional - if no months are selected, the schedule will execute for all months)", required: false, multiple: true,
+            input "schedule${schedNum}Time", "time", required: false, title: "At what time? (required)", submitOnChange: true
+            input "schedule${schedNum}Days", "enum", required: false, title: "On which days? (required)", multiple: true, submitOnChange: true,
+                options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            input "schedule${schedNum}Months", "enum", title: "In which months? (optional - if no months are selected, the schedule will execute for all months)", 
+                required: false, multiple: true, submitOnChange: true,
                 options: ["January": "January", "February": "February", "March": "March", "April": "April", "May": "May", "June": "June", "July": "July",
                     "August": "August", "September": "September", "October": "October", "November": "November", "December": "December"]
+            paragraph getNextScheduleTime(schedNum)
         }
     }
 }
@@ -308,7 +313,7 @@ String schedVal (Integer schedNum, String param) {
     return settings["schedule${schedNum}${param}"]
 }
 
-def clearScheduleData (data) {
+void clearScheduleData (data) {
     logger ("Clearing schedNum data: ${data.schedNum}","debug")
     Integer schedNum = data.schedNum
     app.updateSetting("schedule${schedNum}Name",[type:"text",value:""])
@@ -319,7 +324,8 @@ def clearScheduleData (data) {
     app.updateSetting("schedule${schedNum}Days",[type:"enum",value:""])
     app.updateSetting("schedule${schedNum}Stormwatch",[type:"enum",value:""])
     app.updateSetting("schedule${schedNum}GridStatus",[type:"enum",value:""])
-    app.updateSetting("schedule${schedNum}Time",[type:"text",value:""])
+    //app.updateSetting("schedule${schedNum}Time",[type:"text",value:""])
+    app.removeSetting("schedule${schedNum}Time")
     app.updateSetting("schedule${schedNum}Reserve",[type:"enum",value:""])
 }
     
@@ -349,7 +355,7 @@ Integer addNewSchedule() {
       }
     }
     if (!schedNumAdded) {
-            schedNumAdded = state.scheduleNumUsed.size() + 1
+        schedNumAdded = state.scheduleNumUsed.size() + 1
     }
     state.scheduleNumUsed[schedNumAdded - 1] = true
     logger ("Adding new schedule as with number: ${schedNumAdded}", "debug")
@@ -364,6 +370,51 @@ def pageDeleteSchedule() {
                 	paragraph "Schedule ${schedIndex + 1} has been deleted."
 			}
      }
+}
+    
+String formatDate(Long unixTime) {
+    def dateObject = new Date(unixTime)
+    String time = ""
+    if (unixTime) {
+       def df = new java.text.SimpleDateFormat("EEE MMM dd yyyy HH:mm a z")
+       // Ensure the new date object is set to local time zone
+       if (location.timeZone != null) {
+           df.setTimeZone(location.timeZone)
+       } else {
+           logger ("No time zone found for hub..","warn")
+       }
+       time = df.format(dateObject)
+    }
+    return "${time}"   
+}
+
+String getNextScheduleTime(Integer schedNum) {
+    String nextExecTime = "(Next exec time: not scheduled)"
+    try {
+        Long currentTime = now()
+        String nextTime = schedVal(schedNum,"Time")
+        if (nextTime) {
+            def nextTimeObject = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", nextTime)
+            Long nextTimeEpoch = nextTimeObject.getTime();
+            Long hr24 = 86_400_000
+            while(nextTimeEpoch < currentTime + hr24 * 365) { 
+               def date = new Date(nextTimeEpoch)
+               if (nextTimeEpoch > currentTime && schedDayMonthValid(schedNum, getTheDay(date), getTheMonth(date))) {
+                   if (hubIsSt()) {
+                       nextExecTime = "Next exec time: ${formatDate(nextTimeEpoch)}"
+                   } else {
+                       nextExecTime = "(Next exec time: <span style='color:blue'>${formatDate(nextTimeEpoch)}</span>)"
+                   }
+                   break
+               } else {
+                   nextTimeEpoch = nextTimeEpoch + hr24
+               }
+            }
+        }
+    } catch (Exception e) {
+        logger ("Exception getting next scheduled time for schedNum ${schedNum}: ${e}", "warn")
+    }
+    return nextExecTime            
 }
 
 String validatedAppender(Boolean valid) {
@@ -476,7 +527,7 @@ private gatewayAccountInfo() {
     }
 }
 
-def getConnectionMethodStatus() {
+String getConnectionMethodStatus() {
     String statusStr
     if (!connectionMethod) {
         statusStr = "Use Remote Tesla Account Server Only"
@@ -551,7 +602,7 @@ String getTokenDateString() {
     return msg
 }
 
-def refreshAccessToken(){
+void refreshAccessToken(){
     if (inputRefreshToken && inputRefreshToken != ""){
         String currentRefreshToken = inputRefreshToken
         String ssoAccessToken = ""
@@ -758,14 +809,21 @@ def pagePwPreferences() {
                    options: ["Do not poll" : "Do not poll", "1 minute" : "1 minute", "5 minutes" : "5 minutes", 
                              "10 minutes" : "10 minutes (default)", "30 minutes" : "30 minutes", "1 hour": "1 hour"]
             } 
-            
             input "powerThreshold", "enum", required: false, title: "Power change threshold required for power report updates", defaultValue: "100 Watts (default)", 
                 options: ["10" : "10 Watts", "50" : "50 Watts", "100" : "100 Watts (default)", "500" : "500 Watts", "1000": "1000 Watts"]
             
             input "logLevel", "enum", required: false, title: "Log level", defaultValue: "Info (default)", 
                 options: ["none" : "No logging", "trace" : "Trace", "debug" : "Debug", "info" : "Info (default)", "warn" : "Warn", "error" : "Error"]
+            label title: "Rename this app:", required: false
         }
-        String builtIn
+        
+
+        section () {
+            paragraph "OPTIONAL: Child devices can be created in the Powerwall Manager Powerwall device preference settings, providing " +
+                "additional options for control and monitoring of Powerwall states and power levels via ${getHubType()}."
+        }
+        section (hideable: true, hidden: true, "Additional ${getHubType()} integration information...") {
+            String builtIn
             String addtl
             if (hubIsSt()) {
                 builtIn = "'Automations'"
@@ -774,17 +832,12 @@ def pagePwPreferences() {
                 builtIn = "'Simple Automation Rules'"
                 addtl = "Node-Red, WebCore, Rule Machine, Sharp Tools"
             }
-        section () {
-            paragraph "OPTIONAL: Child devices can be created in the Powerwall Manager Powerwall device preference settings, providing " +
-                "additional options for control and monitoring of Powerwall states and power levels via ${getHubType()}."
-        }
-        section (hideable: true, hidden: true, "Additional ${getHubType()} integration information...") {
             paragraph "1) Enabling child devices in the Powerwall Manager Powerwall device preference settings allows for " +
                 "control and monitoring of Powerwall states and power levels " +
                 "via built-in ${getHubType()} apps such as ${builtIn}. Otherwise " +
                 "rule engines (${addtl}, etc) that support custom commands and attributes are " +
                 "required for extended integration of the Powerwall Manager with ${getHubType()}.\n"
-            paragraph "2) The on/off state of the Powerwall device can be used to indicate whether a grid outage has occured (on=on-grid / off=grid-outage)." 
+            paragraph "2) The on/off switch and open/closed contact state of the Powerwall device can be used to indicate whether a grid outage has occured (on/closed=on-grid, off/open=grid-outage)." 
             paragraph "3) The 'dimmer' level of the Powerwall device can be used to command and monitor the Powerwall reserve (0-100%)."
             paragraph "4) The battery level of the Powerwall device will reflect the Powerwall charge level (0-100%)." 
         }       
@@ -827,7 +880,7 @@ def pageTriggers() {
                 aboveTriggerValue && aboveTriggerEnabled?.toBoolean()
             state.triggerActionsActive = actionsOk
             if (actionsOk) {
-                def actionsString = getActionsString(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, aboveTriggerDevicesToOn, aboveTriggerGridStatus)
+                String actionsString = getActionsString(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, aboveTriggerDevicesToOn, aboveTriggerGridStatus)
                 message = "When Powerwall is above ${aboveTriggerValue?.toString()}%:\n" + actionsString + "\n(notification will also be sent if enabled in preferences)"
             } else {
                 message = "Select to enable Upper % charge level actions.."
@@ -840,7 +893,7 @@ def pageTriggers() {
                 belowTriggerValue && belowTriggerEnabled?.toBoolean()
             state.triggerActionsActive = state.triggerActionsActive || actionsOk
             if (actionsOk) {
-                def actionsString = getActionsString(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, belowTriggerDevicesToOff, belowTriggerGridStatus)
+                String actionsString = getActionsString(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, belowTriggerDevicesToOff, belowTriggerGridStatus)
                 message = "When Powerwall is below ${belowTriggerValue?.toString()}%:\n" + actionsString + "\n(notification will also be sent if enabled in preferences)"
             } else {
                 message = "Select to enable Lower % charge level actions.."
@@ -986,7 +1039,7 @@ Boolean scheduleValid(timeSetting, daysSetting) {
     return timeSetting != null && daysSetting != null && (daysSetting.size() > 0 || daysSetting.toString() == "N/A")
 }
 
-def formatTimeString(timeSetting) {
+String formatTimeString(timeSetting) {
     def timeFormat = new java.text.SimpleDateFormat("hh:mm a")
     def isoDatePattern = "yyyy-MM-dd'T'HH:mm:ss.SSS"
     def isoTime = new java.text.SimpleDateFormat(isoDatePattern).parse(timeSetting.toString())
@@ -1047,7 +1100,7 @@ String getActionsString(modeSetting, reserveSetting, stormwatchSetting, strategy
     return str
 }
                                                               
-def setSchedules() {
+void setSchedules() {
     checkAndMigrateFromPreviousVersion()
     unschedule (processSchedule)
     if (hubIsSt()) {
@@ -1081,24 +1134,32 @@ def setSchedules() {
     }
 }
 
-def getTheDay() {
+def getTheDay(date=null) {
+    if (!date) {
+        date = new Date()
+    }
     def df = new java.text.SimpleDateFormat("EEEE")
     // Ensure the new date object is set to local time zone
     if (location.timeZone != null) {
         df.setTimeZone(location.timeZone)
     } else {
-        log.info "no time zone found for schedule processing"
+         logger ("no time zone found for hub - schedule processing day","warn")
     }
-    def day = df.format(new Date())
-    //log.debug "Today is: ${day}"
+    def day = df.format(date)
     return day
 }
 
-def getTheMonth() {
+def getTheMonth(date=null) {
+    if (!date) {
+        date = new Date()
+    }
     def mf = new java.text.SimpleDateFormat("MMMM")
-    mf.setTimeZone(location.timeZone)
-    def month = mf.format(new Date())
-    //log.debug "Month is: ${month}"
+    if (location.timeZone != null) {
+        mf.setTimeZone(location.timeZone)
+    } else {
+        logger ("no time zone found for hub - schedule processing month","warn")
+    }
+    def month = mf.format(date)
     return month
 }
 
@@ -1107,7 +1168,7 @@ private timeOfDayIsBetween(fromDate, toDate, checkDate, timeZone) {
     return (!checkDate.before(toDateTime(fromDate)) && !checkDate.after(toDateTime(toDate)))
 }
 
-def triggerPeriodActive() {
+Boolean triggerPeriodActive() {
     def day = getTheDay()
     Boolean daysAreSet = triggerRestrictDays?.toBoolean() && triggerDays?.size() > 0
     Boolean dayIsActive = daysAreSet && triggerDays?.contains(day)
@@ -1119,7 +1180,7 @@ def triggerPeriodActive() {
     return ((dayIsActive && (aPeriodIsActive || !aPeriodIsSet)) || (!daysAreSet && (aPeriodIsActive || !aPeriodIsSet)))
 }
 
-def commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTriggers, gridStatus) {
+String commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTriggers, gridStatus) {
     def pwDevice = getPwDevice()
     String message = ""
     if (mode && mode.toString() != "No Action") {
@@ -1184,22 +1245,25 @@ def commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTriggers, 
             message = message + " Going Off Grid."
         }
     }
-    
     return message
+}
+
+Boolean schedDayMonthValid (Integer schedNum, String day, String month) {
+    Boolean monthValid = !schedVal(schedNum,"Months") || schedVal(schedNum,"Months").contains(month)
+    Boolean dayValid = schedVal(schedNum,"Days").contains(day)
+    return dayValid && monthValid && !(schedVal(schedNum,"Disable") == "true")
 }
 
 void processSchedule(data) {
     Integer schedNum = data.schedNum
-    def day = getTheDay()
-    def month = getTheMonth()
-    Boolean monthValid = !schedVal(schedNum,"Months") || schedVal(schedNum,"Months").contains(month)
-    Boolean dayValid = schedVal(schedNum,"Days").contains(day)
-    if (dayValid && monthValid) {
+    if (schedDayMonthValid(schedNum, getTheDay(), getTheMonth())) {
         logger ("Executing schedule number ${schedNum}","debug")
         String message = commandPwActions(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"), schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"Strategy"), null, schedVal(schedNum,"GridStatus"))
         if (notifyOfSchedules?.toBoolean()) {
             sendNotificationMessage("Performing scheduled Powerwall actions. " + message)
         }
+    } else {
+        logger ("Schedule number: ${schedNum} not executing due to day/month/disable criteria", "debug")
     }
 }
 
@@ -1260,7 +1324,7 @@ private getAgent() {
     "darwinsden"
 }
     
-def getToken() {
+String getToken() {
     String returnToken = null
     if (state.useInputToken) {
         returnToken = inputAccessToken
@@ -1473,11 +1537,11 @@ void pollProcedure(String period, def procedure) {
        }
 }
 
-def startPollingServer() {
+void startPollingServer() {
     pollProcedure(pollingPeriod, processServerMain)
 }
     
-def startPollingGateway() {
+void startPollingGateway() {
     pollProcedure(gatewayPollingPeriod, processGatewayMain)
 }
 
@@ -1522,7 +1586,7 @@ private createDeviceForPowerwall() {
     }
 }
 
-def createDashboardTile() {
+void createDashboardTile() {
    def pwDevice = getPwDevice()
    logger ("creating/updating tile...","debug")
    if (pwDevice) {
@@ -1566,7 +1630,7 @@ Boolean newerVersionExists(latest, current) {
     return isNewer
 }
     
-def versionCb (resp, callData) {
+void versionCb (resp, callData) {
     if (resp.status == 200) {
         if (resp.getJson().apps) {
             state.latestStableVersion = resp.getJson().apps[0]?.version
@@ -1582,12 +1646,12 @@ def versionCb (resp, callData) {
     }
 }
 
-def versionCheck() {
+void versionCheck() {
     state.latestStableVersion = null
     httpAsyncGet('versionCb',versionUrl,null,null)
 }
 
-def updateIfChanged(device, attr, value, delta = null) {
+Boolean updateIfChanged(device, attr, value, delta = null) {
     def currentValue = null
     if (state.currentAttrValue == null) {
         state.currentAttrValue = [:]
@@ -1618,19 +1682,19 @@ def updateIfChanged(device, attr, value, delta = null) {
     return changed
 }
 
-def processAboveTriggerDeviceActions() {
+void processAboveTriggerDeviceActions() {
     if (aboveTriggerDevicesToOn?.size()) {
         aboveTriggerDevicesToOn.on()
     }
 }
 
-def processBelowTriggerDeviceActions() {
+void processBelowTriggerDeviceActions() {
     if (belowTriggerDevicesToOff?.size()) {
         belowTriggerDevicesToOff.off()
     }
 }
 
-def checkBatteryNotifications(data) {
+void checkBatteryNotifications(data) {
    if (notifyWhenReserveApproached?.toBoolean() && data.reservePercent != null) {
         reservePct = data.reservePercent.toInteger()
         if (reservePct != 100 && data.batteryPercent - reservePct < 5) {
@@ -1702,7 +1766,7 @@ def checkBatteryNotifications(data) {
     }
 }
 
-def getTileStr(def zoomLevel) {
+String getTileStr(def zoomLevel) {
     String tileStr = ""
     if (gatewayTileAddress) {
       long width = tileWidth?.toLong() ?: 460
@@ -1718,7 +1782,7 @@ def getTileStr(def zoomLevel) {
     return tileStr
 }
 
-def processGwMeterResponse(response, callData) {
+void processGwMeterResponse(response, callData) {
     logger ("processing gateway meter aggregate response","debug")
     if (!response.hasError()) {
         def data = response.json
@@ -1746,7 +1810,7 @@ Float scaleGatewayBatteryPercent (Float percent) {
     return Math.round(scaled * 10)/10     //rounded to one decimal place 
 }
 
-def processGwSoeResponse(response, callData) {
+void processGwSoeResponse(response, callData) {
     logger ("processing gateway SOE response", "debug")
     if (!response.hasError()) {
         def data = response.json
@@ -1761,7 +1825,7 @@ def processGwSoeResponse(response, callData) {
     }  
 }
 
-def processGwOpResponse(response, callData) {
+void processGwOpResponse(response, callData) {
     logger ("processing gateway operation response","debug")
     if (!response.hasError()) {
         def data = response.json
@@ -1773,7 +1837,7 @@ def processGwOpResponse(response, callData) {
     }     
 }
 
-def processGwSiteNameResponse(response, callData) {
+void processGwSiteNameResponse(response, callData) {
     logger ("processing gateway sitename response","debug")
     if (!response.hasError()) {
         def data = response.json
@@ -1875,10 +1939,21 @@ void updateOpModeAndReserve(String opMode, def reservePercent) {
 
 void updateVersion(String version) {
     if (version != null) {
-       String versionString = 'V' + version
-       Boolean changed = updateIfChanged(getPwDevice(), "pwVersion", versionString)
-       if (changed && notifyWhenVersionChanges?.toBoolean()) {
-           sendNotificationMessage("Powerwall software version changed to ${versionString}")
+        def pwDevice = getPwDevice()
+        String lastVersion = pwDevice.currentValue("pwVersion")
+        Boolean changed = updateIfChanged(pwDevice, "pwVersion", 'V' + version)
+        if (changed && notifyWhenVersionChanges?.toBoolean()) {
+            String msg = "Powerwall software version changed to 'V${version}'."
+            if (lastVersion) {
+                msg = "${msg} Prior version was '${lastVersion}'"
+                if (state.lastVerChangeDate) {
+                    msg = "${msg} (${state.lastVerChangeDate})."
+                } else {
+                    msg = "${msg}."
+                }
+            }
+            state.lastVerChangeDate = "${new Date()}"
+            sendNotificationMessage(msg)
        }
     }
 }
@@ -1891,6 +1966,7 @@ void updateOptimizationStrategy(String strategy) {
         } else if (strategy == "balanced") {
             strategyUi = "Balanced"
         } else {
+            logger ("Unrecognized Strategy: ${strategy}","info")
             strategyUi = strategy
         }
         state.strategy = strategyUi.toString()
@@ -1901,7 +1977,7 @@ void updateOptimizationStrategy(String strategy) {
     }
 }
     
-def processSiteResponse(response, callData) {
+def processSiteInfoResponse(response, callData) {
     logger ("processing server site data response","debug")
     if (!response.hasError()) {
         def data = response.json.response
@@ -1911,7 +1987,6 @@ def processSiteResponse(response, callData) {
             sendNotificationMessage("Powerwall Advanced Time Controls schedule has changed")
         }
         state.lastSchedule = data.tou_settings.schedule
-        //log.debug "sched: ${data.tou_settings.schedule}"
         updateVersion (data.version)        
     } else {
         if (response.getStatus() == 401) {
@@ -1920,7 +1995,7 @@ def processSiteResponse(response, callData) {
         }
         if (callData?.attempt && callData.attempt < 2) {
             logger ("Site response error on attempt ${callData?.attempt}: ${response.getErrorMessage()}. Retrying...","debug")
-            runIn(20, requestSiteData, [data: [attempt: callData.attempt + 1]])
+            runIn(20, requestSiteInfo, [data: [attempt: callData.attempt + 1]])
         } else {
             logger ("Site response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
         }
@@ -1948,7 +2023,7 @@ def processSiteLiveStatusResponse(response, callData) {
     } else {
         if (response.getStatus() != 401) {
             if (callData?.attempt && callData.attempt < 2) {
-                runIn(30, processSiteLiveStatusResponse, [data: [attempt: callData.attempt + 1]])
+                runIn(30, requestSiteLiveStatus, [data: [attempt: callData.attempt + 1]])
             } else {
                 logger ("Site live status response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
             }
@@ -1986,7 +2061,6 @@ def processPowerwallResponse(response, callData) {
             //Do not update if connected to gateway, to prevent status data thrashing
             updateGridStatus (data.grid_status)
         }
-        //updateIfChanged(child, "sitenameAndVers", data.site_name.toString() + ' ' + '\n' + gridStatusString)
         updateIfChanged(child, "siteName", data.site_name.toString())
         if (data?.user_settings?.storm_mode_enabled != null) {
             def changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
@@ -2008,10 +2082,11 @@ def processPowerwallResponse(response, callData) {
     }
 }
 
-def processOffGridActions() {
+void processOffGridActions() {
     logger ("processing off grid actions","debug")
     def child = getPwDevice()
     updateIfChanged(child, "switch", "off")
+    updateIfChanged(child, "contact", "open")
     if (notifyWhenGridStatusChanges?.toBoolean()) {
         sendNotificationMessage("Powerwall status changed to: Off Grid")
     }
@@ -2020,10 +2095,11 @@ def processOffGridActions() {
     }
 }
 
-def processOnGridActions() {
+void processOnGridActions() {
     logger ("processing on grid actions","debug")
     def child = getPwDevice()
     updateIfChanged(child, "switch", "on")
+    updateIfChanged(child, "contact", "closed")
     if (notifyWhenGridStatusChanges?.toBoolean()) {
         sendNotificationMessage("Powerwall status changed to: On Grid")
     }
@@ -2035,27 +2111,36 @@ def processOnGridActions() {
     }
 }
 
-def requestSiteData(data) {
-    if (!state?.lastSiteRequestTime || now() - state.lastSiteRequestTime > 1000) {
+void requestSiteInfo(data) {
+    if (!state?.lastSiteInfoRequestTime || now() - state.lastSiteInfoRequestTime > 1000) {
         Integer tryCount = data?.attempt ?: 1
-        //log.debug "requesting site info"
         if (state.serverVerified) {
-            httpAuthAsyncGet('processSiteResponse', "/api/1/energy_sites/${state.energySiteId}/site_info", tryCount)
-            httpAuthAsyncGet('processSiteLiveStatusResponse', "/api/1/energy_sites/${state.energySiteId}/live_status", tryCount)
+            httpAuthAsyncGet('processSiteInfoResponse', "/api/1/energy_sites/${state.energySiteId}/site_info", tryCount)
         }
-        state.lastSiteRequestTime = now()
+        state.lastSiteInfoRequestTime = now()
     }
 }
+
+void requestSiteLiveStatus(data) {
+    if (!state?.lastSiteLiveStatusRequestTime || now() - state.lastSiteLiveStatusRequestTime > 1000) {
+        Integer tryCount = data?.attempt ?: 1
+        if (state.serverVerified) {
+            httpAuthAsyncGet('processSiteLiveStatusResponse', "/api/1/energy_sites/${state.energySiteId}/live_status", tryCount)
+        }
+        state.lastSiteLiveStatusRequestTime = now()
+    }
+}
+
 void reVerifyGateway() {
     getLocalGwStatus()
 }   
 
-def requestGatewayMeterData() {
+void requestGatewayMeterData() {
      String gwUri = "https://${gatewayAddress}"
      asynchttpGet(processGwMeterResponse, [uri: gwUri, path: "/api/meters/aggregates", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
 }
 
-def requestGatewaySiteData() {
+void requestGatewaySiteData() {
     String gwUri = "https://${gatewayAddress}"
     asynchttpGet(processGwSoeResponse, [uri: gwUri, path: "/api/system_status/soe", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
     asynchttpGet(processGwSiteNameResponse, [uri: gwUri, path: "/api/site_info/site_name", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
@@ -2067,10 +2152,9 @@ def requestGatewaySiteData() {
     }   
 }
 
-def requestPwData(data) {
+void requestPwData(data) {
     if (!state?.lastPwRequestTime || now() - state.lastPwRequestTime > 1000) {
         Integer tryCount = data?.attempt ?: 1
-        //log.debug "requesting powerwall data"
         if (state.serverVerified) {
             httpAuthAsyncGet('processPowerwallResponse', "/api/1/powerwalls/${state.pwId}", tryCount)
         }
@@ -2078,8 +2162,7 @@ def requestPwData(data) {
     }
 }
 
-def commandOpMode(data) {
-    //log.debug "commanding opMode to ${data.mode}"
+void commandOpMode(data) {
     httpAuthPost(body: [default_real_mode: data.mode], "${data.mode} mode", "/api/1/energy_sites/${state.energySiteId}/operation", {
         resp ->
         //log.debug "${resp.data}"
@@ -2088,34 +2171,36 @@ def commandOpMode(data) {
     runIn(30, processWatchdog)
 }
 
-def setSelfPoweredMode(child) {
-    if (child) {    
-        //child.sendEvent(name: "currentOpState", value: "Pending Self-Powered", displayed: false)
-        updateIfChanged(child, "currentOpState", "Pending Self-Powered") 
-    }
+void setSelfPoweredMode(child) {
+    /* if (child) {  
+        def pwDevice = getPwDevice()
+        if (pwDevice.currentValue("currentOpState") != "Self-Powered") {
+            updateIfChanged(pwDevice, "currentOpState", "Pending Self-Powered") 
+        }
+    } */
     runIn(1, commandOpMode, [data: [mode: "self_consumption"]])
 }
 
-def setTimeBasedControlMode(child) {
-    if (child) {
-        //child.sendEvent(name: "currentOpState", value: "Pending Time-Based", displayed: false)
-        updateIfChanged(child, "currentOpState", "Pending Time-Based")
-    }
+void setTimeBasedControlMode(child) {
+    /*if (child) {
+        def pwDevice = getPwDevice()
+        if (pwDevice.currentValue("currentOpState") != "Time-Based Control") {
+            updateIfChanged(pwDevice, "currentOpState", "Pending Time-Based") 
+        }
+    }*/
     runIn(1, commandOpMode, [data: [mode: "autonomous"]])
 }
 
-def setBackupOnlyMode(child) {
-    if (child) {
+void setBackupOnlyMode(child) {
+    //Deprecated
+    /*if (child) {
         child.sendEvent(name: "currentOpState", value: "Pending Backup-Only", displayed: false)
         updateIfChanged(child, "currentOpState", "Pending Backup-Only")
-    }
+    } */
     runIn(1, commandOpMode, [data: [mode: "backup"]])
-    //runIn(1, commandBackupReservePercent, [data: [reservePercent: 100]])
-    //String errMessage = "Backup-Only mode no longer supported by Powerwall. Setting reserve to 100%"
-    //sendNotificationMessage(errMessage, "anomaly")
 }
 
-def commandTouStrategy(data) {
+void commandTouStrategy(data) {
     logger ("commanding TOU strategy to ${data.strategy}","debug")
     //request Site Data to get a current tbc schedule. Schedule needs to be sent on tou strategy command or else schedule will be re-set to default
     def latestSchedule
@@ -2125,7 +2210,6 @@ def commandTouStrategy(data) {
             //log.debug "${resp.data}"
             if (resp?.data?.response?.tou_settings?.schedule) {
                 latestSchedule = resp.data.response.tou_settings.schedule
-                //log.debug "got schedule ${latestSchedule}"
             }
         })
     } catch (Exception e) {
@@ -2139,30 +2223,30 @@ def commandTouStrategy(data) {
     def commands = [tou_settings: [optimization_strategy: data.strategy, schedule: latestSchedule]]
     httpAuthPost(body: commands, "${data.strategy}", "/api/1/energy_sites/${state.energySiteId}/time_of_use_settings", {
         resp -> //log.debug "${resp.data}"
-        //log.debug "TOU strategy command sent"
     })
-    runIn(2, requestSiteData)
+    runIn(2, requestSiteInfo)
     runIn(30, processWatchdog)
 }
 
-def setTbcBalanced(child) {
+void setTbcBalanced(child) {
     if (child) {
-        //child.sendEvent(name: "currentStrategy", value: "Pending Balanced", displayed: false)
-        updateIfChanged(child, "currentStrategy", "Pending Balanced")
+        if (child.currentValue("currentStrategy") != "Balanced") {
+            updateIfChanged(child, "currentStrategy", "Pending Balanced") 
+        }
     }
     runIn(2, commandTouStrategy, [data: [strategy: "balanced"]])
 }
 
-def setTbcCostSaving(child) {
+void setTbcCostSaving(child) {
     if (child) {
-        child.sendEvent(name: "currentStrategy", value: "Pending Cost-Saving", displayed: false)
-        updateIfChanged(child, "currentStrategy", "Pending Cost-Saving")
+        if (child.currentValue("currentStrategy") != "Cost-Saving") {
+            updateIfChanged(child, "currentStrategy", "Pending Cost-Saving") 
+        }
     }
     runIn(2, commandTouStrategy, [data: [strategy: "economics"]])
 }
 
-def commandBackupReservePercent(data) {
-    //log.debug "commanding reserve to ${data.reservePercent}%"
+void commandBackupReservePercent(data) {
     httpAuthPost(body: [backup_reserve_percent: data.reservePercent], "reserve ${data.reservePercent}%",
     "/api/1/energy_sites/${state.energySiteId}/backup", {
         resp ->
@@ -2171,10 +2255,10 @@ def commandBackupReservePercent(data) {
     runIn(30, processWatchdog)
 }
 
-def commandGoOffGrid(data) {
+void commandGoOffGrid(data) {
     if (!connectedToGateway()) {
-     logger ("Not connected to gateway, cannot set GoOffGrid Status")
-     return "Not Connected"
+        logger ("Not connected to gateway, cannot set GoOffGrid Status")
+        return
     }
     try
     {
@@ -2184,7 +2268,6 @@ def commandGoOffGrid(data) {
             islandingMode = "intentional_reconnect_failsafe"   
         }
         logger ("commanding GoOffGrid strategy to ${islandingMode}","debug")
-
         httpPost([uri: "https://${gatewayAddress}", path: "/api/v2/islanding/mode", headers: gwHeader(), body:"{\"island_mode\":\"${islandingMode}\"}", contentType: 'application/json', ignoreSSLIssues: true]) {
                         response -> 
                         logger("local islanding call successful","debug")
@@ -2196,21 +2279,20 @@ def commandGoOffGrid(data) {
     } catch (Exception e) {
         logger ("Error setting local gateway island status: ${e}","warn")
         state.gatewayStatusStr = "Error accessing local gateway.\n" + "Please verify your gateway address and password. ${e}" 
-        return state.gatewayStatusStr
     }
 }
 
-def goOffGrid(child){
+void goOffGrid(child){
     logger ("commanding go off grid","debug")
     runIn(2, commandGoOffGrid, [data: [isOnGrid:false]])
 }
 
-def goOnGrid(child){
+void goOnGrid(child){
     logger ("commanding go on grid","debug")
     runIn(2, commandGoOffGrid, [data: [isOnGrid:true]])
 }
 
-def setBackupReservePercent(child, value) {
+void setBackupReservePercent(child, value) {
     if (value != null && value.toInteger() >= 0 && value.toInteger() <= 100) {
         runIn(2, commandBackupReservePercent, [data: [reservePercent: value.toInteger()]])
     } else {
@@ -2218,31 +2300,28 @@ def setBackupReservePercent(child, value) {
     }
 }
 
-def commandStormwatchEnable() {
+void commandStormwatchEnable() {
     httpAuthPost(body: [enabled: true], "stormwatch mode enable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
         resp -> //log.debug "${resp.data}"
-        //log.debug "Stormwatch enable command sent"
     })
     runIn(3, requestPwData)
     runIn(30, processWatchdog)
 }
 
-def commandStormwatchDisable() {
-    //log.debug "commanding stormwatch disable"
+void commandStormwatchDisable() {
     httpAuthPost(body: [enabled: false], "stormwatch mode enable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
         resp -> //log.debug "${resp.data}"
-        //log.debug "Stormwatch disable command sent"
     })
     runIn(2, requestPwData)
     runIn(30, processWatchdog)
 }
 
-def enableStormwatch(child) {
+void enableStormwatch(child) {
     logger ("commanding stormwatch on","debug")
     runIn(2, commandStormwatchEnable)
 }
 
-def disableStormwatch(child) {
+void disableStormwatch(child) {
     logger ("commanding stormwatch off","debug")
     runIn(2, commandStormwatchDisable)
 }
@@ -2257,7 +2336,7 @@ def refresh(child) {
     runIn(30, processWatchdog)
 }
 
-def processWatchdog() {
+void processWatchdog() {
     def lastTimeProcessed
     def lastTimeCompleted
     if (!state.lastProcessedTime | !state.lastCompletedTime) {
@@ -2337,13 +2416,13 @@ void checkAndMigrateFromPreviousVersion() {
 }
          
 //backward compatability for release update - rename of method 3-Jun-2021. Will be removed on future release
-def processMain() {
+void processMain() {
     logger ("Re-initializing due to code version update.","warn")
     checkAndMigrateFromPreviousVersion()
     runIn(1, initialize) //processMain will never be called again with new code
 }
     
-def processServerMain() {
+void processServerMain() {
     //if (!state.forceSrvrFailure) {
     //    log.debug "server fail test initiated"
     //    state.forceSrvrFailure=true
@@ -2361,7 +2440,8 @@ def processServerMain() {
     if (secondsSinceLastRun > 60) {
         state.lastStateRunTime = now()
         runIn(1, requestPwData)
-        runIn(10, requestSiteData)
+        runIn(10, requestSiteInfo)
+        runIn(15, requestSiteLiveStatus)
         if ((settings.notifyTokenAge == null || settings.notifyOfTokenAge) && state.tokenChangeTime && !state.tokenAgeWarnSent) {
             Integer tokenAgeDays = ((now() - state.tokenChangeTime)/1000/60/60/24).toInteger()
             if (tokenAgeDays > 40) {
