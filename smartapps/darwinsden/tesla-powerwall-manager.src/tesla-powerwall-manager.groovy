@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.70.20220405"
+    return "v0.3.71.20220405"
 }
 
 /* 
+ * 05-Apr-2022 >>> v0.3.71.20220405 - Correct patch refresh date check integer overflow issue.
  * 05-Apr-2022 >>> v0.3.70.20220405 - Apparent Tesla auth change - quick patch.
  * 15-Mar-2022 >>> v0.3.61.20220315 - Added contact sensor capability to PW device to indicate grid status (open=off-grid).
  * 02-Feb-2022 >>> v0.3.60.20220202 - Add Storm Watch Active. Child device option for enhanced SmartThings/Hubitat integration.
@@ -644,7 +645,7 @@ void refreshAccessToken(){
             }
         }
         catch (Exception e){
-            logger ("Issue getting Tesla server bearer token from refresh token: ${e}","warn")
+            logger ("Error getting Tesla server bearer token from refresh token: ${e}","warn")
             if (now() < state.tokenExpiration) {
                 state.scheduleRefreshToken = true //Still time - try again later
             }
@@ -2757,9 +2758,9 @@ def hrefMenuPage (String page, String titleStr, String descStr, String image, pa
 @Field static final String teslaAccessTokenAuthGrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 @Field static final String teslaAccessTokenAuthClientId = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
 @Field static final Integer maxSmartThingsSchedules = 15
-@Field static final Integer oneMinuteMs = 1000*60
-@Field static final Integer oneHourMs = 1000*60*60
-@Field static final Integer oneDayMs = 1000*60*60*24
+@Field static final Long oneMinuteMs = 1000*60
+@Field static final Long oneHourMs = 1000*60*60
+@Field static final Long oneDayMs = 1000*60*60*24
 
 
 // Icons
