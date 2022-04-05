@@ -3,7 +3,7 @@
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
-  "releaseNotes": "v0.3.70:\n- v0.3.70 - Apparent Tesla auth change - quick patch.",
+  "releaseNotes": "v0.3.70:\n- Apparent Tesla auth change - quick patch.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
