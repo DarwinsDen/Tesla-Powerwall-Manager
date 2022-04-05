@@ -3,7 +3,7 @@
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
   "dateReleased": "2022-01-21",
-  "releaseNotes": "v0.3.61:\n- Added contact sensor capability to Powerwall device to indicate grid status (open=off-grid) to facilitate Alexa voice alerts.\n- Added indication of next schedule run time when entering schedules.",
+  "releaseNotes": "v0.3.70:\n- v0.3.70 - Apparent Tesla auth change - quick patch.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.61"
+      "version": "0.3.70"
     }
   ],
   "drivers": [
