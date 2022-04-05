@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.61.20220315"
+    return "v0.3.70.20220405"
 }
 
 /* 
+ * 05-Apr-2022 >>> v0.3.70.20220405 - Apparent Tesla auth change - quick patch.
  * 15-Mar-2022 >>> v0.3.61.20220315 - Added contact sensor capability to PW device to indicate grid status (open=off-grid).
  * 02-Feb-2022 >>> v0.3.60.20220202 - Add Storm Watch Active. Child device option for enhanced SmartThings/Hubitat integration.
  *                                    Delta threshold preference setting for power reporting. Enabled dimmer level for reserve control/status.
@@ -466,7 +467,6 @@ private teslaAccountInfo() {
             paragraph ("If an Access Token is entered here, it must be updated periodically depending on the expiration date of the token provided (nominally every 45 days). " +
                        "If a valid Refresh Token is entered above, the Access Token will be periodically overridden.") 
             input "inputAccessToken", "text", title: "Access Token" + validatedAppender(validateInputToken()), autoCorrect: false, required: false, submitOnChange : true
-       
             paragraph "You may configure a local server to generate and serve an Access Token. " + 
                 "If local server information is provided below, this app will query the local server as needed " +
                 "for updated access token information. The token must be" +
@@ -597,15 +597,30 @@ String getTokenDateString() {
     }
     String msg = ""
     if (state.tokenChangeTime) {
-       msg = "\nToken last updated ${((now()-state.tokenChangeTime)/1000/60/60/24).toInteger()} days ago."
+        //msg = "\nToken last updated ${((now()-state.tokenChangeTime)/1000/60/60/24).toInteger()} days ago."
+        def dateStr = new Date(state.tokenChangeTime)
+        msg = "\nToken updated: ${dateStr}."                
+        if (state.tokenExpiration) {
+            dateStr = new Date(state.tokenExpiration)
+            msg = msg + "\nExpires: ${dateStr}."
+            if (!state.scheduleRefreshToken && state.refreshSchedTime && now() < state.refreshSchedTime) {
+                dateStr = new Date(state.refreshSchedTime)
+                msg = msg + "\nRefresh scheduled: ${dateStr}."
+            } else if (state.scheduleRefreshToken) {
+                msg = msg + "\nToken Refresh pending."
+            } else if (state.tokenExpiration && now() > state.tokenExpiration) {
+                msg = msg + "\nExpired."
+            }
+        }
     }
     return msg
 }
 
 void refreshAccessToken(){
-    if (inputRefreshToken && inputRefreshToken != ""){
-        String currentRefreshToken = inputRefreshToken
+    if (settings.inputRefreshToken && settings.inputRefreshToken != ""){
+        String currentRefreshToken = settings.inputRefreshToken
         String ssoAccessToken = ""
+        Long expiresIn
         state.refreshTokenSuccess = false
         Map payload = ["grant_type":teslaBearerTokenGrantType,"refresh_token":currentRefreshToken, "client_id":teslaBearerTokenClientId, "scope":teslaBearerTokenScope]
         try{
@@ -613,22 +628,26 @@ void refreshAccessToken(){
             logger ("Calling ${teslaBearerTokenEndpoint} with ${payload}","trace")
             httpPostJson([uri: teslaBearerTokenEndpoint, body: payload]){ resp ->
                 Integer statusCode = resp.getStatus()
-                logger("Refresh Bearer Token Request Status Code: ${statusCode}", "debug")
                 if (statusCode == 200) {
                     logger("Bearer access request data: ${resp.data}","trace")
                     app.updateSetting("inputRefreshToken",[type:"text",value:resp.data["refresh_token"]])
                     ssoAccessToken = resp.data["access_token"]
-                    //state.lastInputRefreshToken = resp.data["refresh_token"]
-                    //state.lastBearerSsoAccessToken = resp.data["access_token"]
+                    expiresIn = resp.data.expires_in.toLong()
                     logger ("Successfully updated refresh token and bearer token for access token","debug")
                 } 
                 else {
-                    logger ("No Dice updating refresh token and bearer token for access token")
+                    logger ("Unable to update refresh token and bearer token for access token. Status code: ${statusCode}","warn")
+                    if (now() < state.tokenExpiration) {
+                        state.scheduleRefreshToken = true //Still time - try again later
+                    }  
                 }
             }
         }
         catch (Exception e){
-            logger ("Error getting Tesla server bearer token from refresh token: ${e}","warn")
+            logger ("Issue getting Tesla server bearer token from refresh token: ${e}","warn")
+            if (now() < state.tokenExpiration) {
+                state.scheduleRefreshToken = true //Still time - try again later
+            }
         }
     
         logger ("Getting updated access token and expiry", "debug")
@@ -638,31 +657,34 @@ void refreshAccessToken(){
             httpPostJson([uri: teslaAccessTokenEndpoint, headers: ownerApiHeaders, body: ownerPayload]){
                 resp ->
                 Integer statusCode = resp.getStatus()
-                logger("Refresh Access Token Request Status Code: ${statusCode}", "debug")
                 if (statusCode == 200){
                     logger("Access Token access request data: ${resp.data}","trace")
-                    app.updateSetting("inputAccessToken",[type:"text",value:resp.data["access_token"]])
-                    settings.inputAccessToken = resp.data["access_token"] //ST workaround for immediate setting within dynamic page
-                    //state.lastBearerOwnerAccessToken = resp.data["access_token"]
-                    //state.lastBearerOwnerAccessTokenCreatedAt = resp.data["created_at"]
-                    //state.lastBearerOwnerAccessTokenExpiresIn = resp.data["expires_in"]
-                
-                    state.tokenExpiration = now() + resp.data.expires_in.toLong() * 1000
-                    def refreshDate = new Date(state.tokenExpiration)
-                    logger ("Token expires on ${refreshDate}.","debug")
-                    state.scheduleRefreshToken = true  
-                    state.refreshTokenSuccess = true
-                    getTokenDateString() //Reset acccess token date status
+                    acceptAccessToken (resp.data["access_token"], resp.data.expires_in.toLong())
                 }
                 else {
-                    logger ("No Dice updating access token")
+                    logger ("Unable to update access token. Status code: ${statusCode}","debug")
                 }
             }
         }
         catch (Exception e){
-            logger ("Error getting Tesla server access token from bearer refresh token: ${e}","warn")
+            logger ("Issue getting Tesla server access token from bearer refresh token: ${e}","debug")
+            //Use the sso token as is:
+            if (ssoAccessToken && expiresIn) {
+                acceptAccessToken (ssoAccessToken, expiresIn)
+            }
         }
     }
+}
+
+void acceptAccessToken (String token, Long expiresIn) {
+    app.updateSetting("inputAccessToken",[type:"text",value:token])
+    settings.inputAccessToken = token //ST workaround for immediate setting within dynamic page
+    state.tokenExpiration = now() + expiresIn * 1000
+    def refreshDate = new Date(state.tokenExpiration)
+    logger ("Token expires on ${refreshDate}.","debug")
+    state.scheduleRefreshToken = true  
+    state.refreshTokenSuccess = true
+    getTokenDateString() //Reset access token date status
 }
     
 String getTeslaServerStatus() {
@@ -670,7 +692,7 @@ String getTeslaServerStatus() {
     try {
         String messageStr = ""
         String tokenStatusStr = ""
-        if (!hubIsSt()) {
+        if (!hubIsSt() && accessTokenIp) {
             //Hubitat - local call is synchronous so can be done on this main page. For SmartThings
             //it is asynchronous, so needs to be done on the subpage and result will be available when on the main page
             validateLocalUrl()
@@ -1041,7 +1063,7 @@ Boolean scheduleValid(timeSetting, daysSetting) {
 
 String formatTimeString(timeSetting) {
     def timeFormat = new java.text.SimpleDateFormat("hh:mm a")
-    def isoDatePattern = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+    String isoDatePattern = "yyyy-MM-dd'T'HH:mm:ss.SSS"
     def isoTime = new java.text.SimpleDateFormat(isoDatePattern).parse(timeSetting.toString())
     return timeFormat.format(isoTime).toString()
 }
@@ -1102,11 +1124,12 @@ String getActionsString(modeSetting, reserveSetting, stormwatchSetting, strategy
                                                               
 void setSchedules() {
     checkAndMigrateFromPreviousVersion()
-    unschedule (processSchedule)
     if (hubIsSt()) {
         for(int i in 1 .. maxSmartThingsSchedules) {
             unschedule("processSchedule${i}")
         }
+    } else {
+        unschedule ("processSchedule") //possible minor Hubitat bug - pass method as string otherwise will unschedule everything if method does not exist
     }
     if (state.scheduleList) {
        for(int i in 0 .. state.scheduleList.size() - 1) {
@@ -1134,7 +1157,7 @@ void setSchedules() {
     }
 }
 
-def getTheDay(date=null) {
+String getTheDay(date=null) {
     if (!date) {
         date = new Date()
     }
@@ -1145,11 +1168,10 @@ def getTheDay(date=null) {
     } else {
          logger ("no time zone found for hub - schedule processing day","warn")
     }
-    def day = df.format(date)
-    return day
+    return df.format(date)
 }
 
-def getTheMonth(date=null) {
+String getTheMonth(date=null) {
     if (!date) {
         date = new Date()
     }
@@ -1159,8 +1181,7 @@ def getTheMonth(date=null) {
     } else {
         logger ("no time zone found for hub - schedule processing month","warn")
     }
-    def month = mf.format(date)
-    return month
+    return mf.format(date)
 }
 
 //Hubitat compatibility
@@ -1169,7 +1190,7 @@ private timeOfDayIsBetween(fromDate, toDate, checkDate, timeZone) {
 }
 
 Boolean triggerPeriodActive() {
-    def day = getTheDay()
+    String day = getTheDay()
     Boolean daysAreSet = triggerRestrictDays?.toBoolean() && triggerDays?.size() > 0
     Boolean dayIsActive = daysAreSet && triggerDays?.contains(day)
     Boolean aPeriodIsSet = (triggerRestrictPeriod1?.toBoolean() || triggerRestrictPeriod2?.toBoolean())
@@ -1350,7 +1371,7 @@ private httpAsyncGet (handlerMethod, String url, String path, query=null) {
 }
 
 private httpAuthAsyncGet(handlerMethod, String path, Integer attempt = 1) {
-    def theToken = getToken()
+    String theToken = getToken()
     if (theToken) {
       try {
           logger ("Async requesting: ${path}","trace")
@@ -1766,7 +1787,7 @@ void checkBatteryNotifications(data) {
     }
 }
 
-String getTileStr(def zoomLevel) {
+String getTileStr(Float zoomLevel) {
     String tileStr = ""
     if (gatewayTileAddress) {
       long width = tileWidth?.toLong() ?: 460
@@ -1798,7 +1819,7 @@ void processGwMeterResponse(response, callData) {
             child.refreshChildDevices()
         }
     } else {
-        logger ("Error procesing gateway meter data. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway meter data: ${response.getStatus()} ${response.getErrorMessage()}","warn")
         if (response.getStatus() == 401 || response.getStatus() == 403) {
             runIn (5, reVerifyGateway)
         }
@@ -1821,7 +1842,7 @@ void processGwSoeResponse(response, callData) {
         updateIfChanged(child, "batteryPercent", batteryPercent)
         runIn(1, checkBatteryNotifications, [data: [batteryPercent: batteryPercent, reservePercent: null]])
     } else { 
-        logger ("Error procesing gateway SOE. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway SOE: ${response.getStatus()} ${response.getErrorMessage()}","warn")
     }  
 }
 
@@ -1833,7 +1854,7 @@ void processGwOpResponse(response, callData) {
         Float reservePercent = scaleGatewayBatteryPercent(data.backup_reserve_percent) //adjust TEG to match Tesla Server API
         updateOpModeAndReserve(data.real_mode, (reservePercent + 0.5).toInteger()) 
     } else { 
-        logger ("Error procesing gateway operation. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway operation: ${response.getStatus()} ${response.getErrorMessage()}","warn")
     }     
 }
 
@@ -1845,7 +1866,8 @@ void processGwSiteNameResponse(response, callData) {
         def child = getPwDevice()
         updateIfChanged(child, "siteName", data.site_name.toString())
     } else {
-        logger ("Error procesing gateway sitename. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway sitename: ${response.getStatus()} ${response.getErrorMessage()}","warn")
+        
     }      
 }
 
@@ -1856,7 +1878,7 @@ def processGwStatusResponse(response, callData) {
         logger ("Gw Status: ${data}","trace")
         updateVersion (data.version) 
     } else {
-        logger ("Error procesing gateway status. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway status: ${response.getStatus() ${response.getErrorMessage()}}","warn")
     }      
 }
 
@@ -1866,7 +1888,7 @@ def processGwGridStatResponse(response, callData) {
         def data = response.json
         updateGridStatus(data.grid_status)
     } else {
-        logger ("Error procesing gateway grid status. Response status: ${response.getStatus()}","warn")
+        logger ("Error procesing gateway grid status: ${response.getStatus()} ${response.getErrorMessage()}","warn")
     }      
 }
 
@@ -1989,7 +2011,8 @@ def processSiteInfoResponse(response, callData) {
         state.lastSchedule = data.tou_settings.schedule
         updateVersion (data.version)        
     } else {
-        if (response.getStatus() == 401) {
+        Integer status = response.getStatus()
+        if (status == 401) {
             //log.warn "Site resp error: ${response.getErrorMessage()}."
             runIn (1, handleServerAuthIssue)
         }
@@ -1997,7 +2020,7 @@ def processSiteInfoResponse(response, callData) {
             logger ("Site response error on attempt ${callData?.attempt}: ${response.getErrorMessage()}. Retrying...","debug")
             runIn(20, requestSiteInfo, [data: [attempt: callData.attempt + 1]])
         } else {
-            logger ("Site response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
+            logger ("Site response error after ${callData?.attempt} attempts: ${status} ${response.getErrorMessage()}.","warn")
         }
     }
 }
@@ -2021,11 +2044,11 @@ def processSiteLiveStatusResponse(response, callData) {
             }
         }
     } else {
-        if (response.getStatus() != 401) {
+        if (status != 401) {
             if (callData?.attempt && callData.attempt < 2) {
                 runIn(30, requestSiteLiveStatus, [data: [attempt: callData.attempt + 1]])
             } else {
-                logger ("Site live status response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
+                logger ("Site live status response error after ${callData?.attempt} attempts: ${response.getStatus()} ${response.getErrorMessage()}.","warn")
             }
         }
     }
@@ -2063,21 +2086,18 @@ def processPowerwallResponse(response, callData) {
         }
         updateIfChanged(child, "siteName", data.site_name.toString())
         if (data?.user_settings?.storm_mode_enabled != null) {
-            def changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
+            Boolean changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
             if (changed) {
                 pwDevice.refreshChildDevices()
             }
         }
         state.lastCompletedTime = now()
     } else {
-        //if (response.getStatus() == 401) {
-        //    log.warn "Powerwall resp error: ${response.getErrorMessage()}. Refreshing token"
-        //}
         if (callData?.attempt && callData.attempt < 2) {
             logger ("Powerwall response error on attempt ${callData.attempt}: ${response.getErrorMessage()}. Retrying...", "debug")
             runIn(30, requestPwData, [data: [attempt: callData.attempt + 1]])
         } else {
-            logger ("Powerwall response error after ${callData?.attempt} attempts: ${response.getErrorMessage()}.","warn")
+            logger ("Powerwall response error after ${callData?.attempt} attempts: ${response.getStatus()} ${response.getErrorMessage()}.","warn")
         }
     }
 }
@@ -2421,6 +2441,25 @@ void processMain() {
     checkAndMigrateFromPreviousVersion()
     runIn(1, initialize) //processMain will never be called again with new code
 }
+
+void scheduleRefreshAccessToken() {
+    if (state.tokenExpiration) {
+        Long refreshDateEpoch = state.tokenExpiration - oneHourMs*2.5 // 2.5 hours before expiration
+        //Min 1 hour, max 30 days
+        if (refreshDateEpoch - now() < oneHourMs) {
+            refreshDateEpoch = now() + oneHourMs
+        } else if (refreshDateEpoch - now() > oneDayMs*30) {
+            refreshDateEpoch = now() + oneDayMs*30
+        }
+        def refreshDate = new Date(refreshDateEpoch)
+        logger ("Scheduling token refresh for ${refreshDate}.","debug")
+        runOnce(refreshDate, refreshAccessToken) 
+        state.scheduleRefreshToken = false
+        state.refreshSchedTime = refreshDateEpoch
+    } else {
+        logger ("Unable to schedule refresh token. No expiration date found","warn")           
+    }
+}
     
 void processServerMain() {
     //if (!state.forceSrvrFailure) {
@@ -2443,24 +2482,14 @@ void processServerMain() {
         runIn(10, requestSiteInfo)
         runIn(15, requestSiteLiveStatus)
         if ((settings.notifyTokenAge == null || settings.notifyOfTokenAge) && state.tokenChangeTime && !state.tokenAgeWarnSent) {
-            Integer tokenAgeDays = ((now() - state.tokenChangeTime)/1000/60/60/24).toInteger()
+            Integer tokenAgeDays = ((now() - state.tokenChangeTime)/oneDayMs).toInteger()
             if (tokenAgeDays > 40) {
                state.tokenAgeWarnSent = true
                sendNotificationMessage("Powerwall Manager: Tesla access token was last updated ${tokenAgeDays} days ago.")
             }
         }
         if (state.scheduleRefreshToken && state.tokenExpiration) {
-            Long refreshDateEpoch = state.tokenExpiration - 7_200_000 // 2 hours before expiration
-            //Min 3 hours, max 30 days
-            if (refreshDateEpoch - now() < 180_000) {
-                refreshDateEpoch = now() + 180_000
-            } else if (refreshDateEpoch - now() > 2_592_000_000) {
-                refreshDateEpoch = now() + 2_592_000_000
-            }
-            def refreshDate = new Date(refreshDateEpoch)
-            logger ("Scheduling token refresh for ${refreshDate}.","debug")
-            runOnce(refreshDate, refreshAccessToken) 
-            state.scheduleRefreshToken = false
+            scheduleRefreshAccessToken()
         }
         
     }
@@ -2659,7 +2688,9 @@ void handleServerAuthIssue() {
        if (!validateInputToken() && state.accessTokenFromUrlValid) {
           state.useInputToken = false //force use of token from URL
        }
-       validateLocalUrl() //check for a new token from URL
+       if (accessTokenIp) {
+           validateLocalUrl() //check for a new token from URL
+       }
        runIn (3, initialServerFailover)
     }
 }
@@ -2672,8 +2703,10 @@ void initialServerFailover() {
 }
 
 void prepDailyServerFailover() {
-   validateLocalUrl()
-   runIn (5, dailyServerFailover)
+    if (accessTokenIp) {
+        validateLocalUrl()
+    }
+    runIn (5, dailyServerFailover)
 }
 
 void dailyServerFailover() {
@@ -2724,6 +2757,10 @@ def hrefMenuPage (String page, String titleStr, String descStr, String image, pa
 @Field static final String teslaAccessTokenAuthGrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 @Field static final String teslaAccessTokenAuthClientId = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
 @Field static final Integer maxSmartThingsSchedules = 15
+@Field static final Integer oneMinuteMs = 1000*60
+@Field static final Integer oneHourMs = 1000*60*60
+@Field static final Integer oneDayMs = 1000*60*60*24
+
 
 // Icons
 @Field static final String teslaIcon = "https://rawgit.com/DarwinsDen/SmartThingsPublic/master/resources/icons/Tesla-Icon40.png"
