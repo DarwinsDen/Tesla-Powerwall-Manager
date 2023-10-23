@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.71.20220405"
+    return "v0.3.80.20231023"
 }
 
 /* 
+ * 23-Oct-2023 >>> v0.3.80.20231023 - Update for Tesla API change - removal of api/1/powerwalls.
  * 05-Apr-2022 >>> v0.3.71.20220405 - Correct patch refresh date check integer overflow issue.
  * 05-Apr-2022 >>> v0.3.70.20220405 - Apparent Tesla auth change - quick patch.
  * 15-Mar-2022 >>> v0.3.61.20220315 - Added contact sensor capability to PW device to indicate grid status (open=off-grid).
@@ -573,7 +574,8 @@ def pageDashboardTile() {
         }
         section{
             note = "To view this attribute tile on your dashboard, you may need to first visit the gateway URL in your dashboard browser, " +
-                   "accept the self-signed certificate exception, and log in as 'customer'." +
+                   "accept the self-signed certificate exception, and log in as 'customer'. Depending on your browser, you may be required to disable " +
+                "'Prevent cross-site tracking' to view the gateway webpage frame." +
                    "\n&#8226Add to .css to remove extra tile padding in Fully Kiosk Browser: #tile-XXX .tile-contents {padding: 0; margin: -1px}"
             paragraph "<font style='font-size:14px; font-style: italic'>${note}</font>"    
         }
@@ -598,15 +600,11 @@ String getTokenDateString() {
     }
     String msg = ""
     if (state.tokenChangeTime) {
-        //msg = "\nToken last updated ${((now()-state.tokenChangeTime)/1000/60/60/24).toInteger()} days ago."
-        def dateStr = new Date(state.tokenChangeTime)
-        msg = "\nToken updated: ${dateStr}."                
+        msg = "\nToken updated: ${formatDate(state.tokenChangeTime)}."                
         if (state.tokenExpiration) {
-            dateStr = new Date(state.tokenExpiration)
-            msg = msg + "\nExpires: ${dateStr}."
+            msg = msg + "\nExpires: ${formatDate(state.tokenExpiration)}."
             if (!state.scheduleRefreshToken && state.refreshSchedTime && now() < state.refreshSchedTime) {
-                dateStr = new Date(state.refreshSchedTime)
-                msg = msg + "\nRefresh scheduled: ${dateStr}."
+                msg = msg + "\nRefresh scheduled: ${formatDate(state.refreshSchedTime)}."
             } else if (state.scheduleRefreshToken) {
                 msg = msg + "\nToken Refresh pending."
             } else if (state.tokenExpiration && now() > state.tokenExpiration) {
@@ -807,7 +805,7 @@ def pageNotifications() {
             input "notifyWhenModesChange", "bool", required: false, defaultValue: false, title: "Powerwall configuration (mode/schedule) changes are detected"
             input "notifyWhenAnomalies", "bool", required: false, defaultValue: true, title: "Anomalies are encountered in the Powerwall Manager"
             input "notifyWhenStormwatch", "bool", required: false, defaultValue: false, title: "Storm Watch mode is active"
-            input "notifyOfTokenAge", "bool", required: false, defaultValue: true, title: "Access token will soon expire (40 days after entering)"
+            input "notifyOfTokenAge", "bool", required: false, defaultValue: true, title: "Access token has not been refreshed (40 days after entering)"
         }
         section() {
             if (hubIsSt()) {
@@ -832,7 +830,10 @@ def pagePwPreferences() {
                    options: ["Do not poll" : "Do not poll", "1 minute" : "1 minute", "5 minutes" : "5 minutes", 
                              "10 minutes" : "10 minutes (default)", "30 minutes" : "30 minutes", "1 hour": "1 hour"]
             } 
-            input "powerThreshold", "enum", required: false, title: "Power change threshold required for power report updates", defaultValue: "100 Watts (default)", 
+            
+            input "powerThreshold", "enum", required: false, 
+                title: "Power change threshold required for power report updates. (Values will always be updated if changed by more than 50%.)", 
+                defaultValue: "100 Watts (default)", 
                 options: ["10" : "10 Watts", "50" : "50 Watts", "100" : "100 Watts (default)", "500" : "500 Watts", "1000": "1000 Watts"]
             
             input "logLevel", "enum", required: false, title: "Log level", defaultValue: "Info (default)", 
@@ -842,7 +843,7 @@ def pagePwPreferences() {
         
 
         section () {
-            paragraph "OPTIONAL: Child devices can be created in the Powerwall Manager Powerwall device preference settings, providing " +
+            paragraph "OPTIONAL: Child devices can be created in the Powerwall Manager Powerwall device preference settings (Hubitat Devices tab), providing " +
                 "additional options for control and monitoring of Powerwall states and power levels via ${getHubType()}."
         }
         section (hideable: true, hidden: true, "Additional ${getHubType()} integration information...") {
@@ -982,8 +983,6 @@ def pagePwActions(params) {
             input "${prefix}Strategy", "enum", required: false, title: "Set Strategy for Time-Based Control", options: ["No Action", "Cost Saving","Balanced"]
             if (!hubIsSt()){
                 input "${prefix}GridStatus", "enum", required: false, title: "Set Grid Status", options: ["No Action", "Go On Grid","Go Off Grid"]
-            //} else {
-            // input "${prefix}GridStatus", "enum", required: false, title: "Set Grid Status", options: ["No Action"]   
             }
         }
     }
@@ -1124,7 +1123,6 @@ String getActionsString(modeSetting, reserveSetting, stormwatchSetting, strategy
 }
                                                               
 void setSchedules() {
-    checkAndMigrateFromPreviousVersion()
     if (hubIsSt()) {
         for(int i in 1 .. maxSmartThingsSchedules) {
             unschedule("processSchedule${i}")
@@ -2010,7 +2008,16 @@ def processSiteInfoResponse(response, callData) {
             sendNotificationMessage("Powerwall Advanced Time Controls schedule has changed")
         }
         state.lastSchedule = data.tou_settings.schedule
-        updateVersion (data.version)        
+        updateVersion (data.version)    
+        updateOpModeAndReserve(data.default_real_mode, data.backup_reserve_percent?.toInteger()) 
+        def child = getPwDevice()
+        if (data.user_settings?.storm_mode_enabled != null) {
+            Boolean changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean()) 
+            if (changed) {
+                child.refreshChildDevices()
+            }
+        }
+        updateIfChanged(child, "siteName", data.site_name.toString())
     } else {
         Integer status = response.getStatus()
         if (status == 401) {
@@ -2033,17 +2040,42 @@ def processSiteLiveStatusResponse(response, callData) {
         logger ("Site Live Status: ${data}","trace")
         Boolean stormwatchMode = data?.storm_mode_active
         def child = getPwDevice()
-        Boolean changed = updateIfChanged(child, "stormwatchActive", data?.storm_mode_active) 
-        if (changed) {
-            child.refreshChildDevices()
-            if (settings.notifyWhenStormwatch) {
-                if (stormwatchMode) {
-                    sendNotificationMessage("Powerwall Storm Watch mode is active.")
-                } else {
-                    sendNotificationMessage("Powerwall Storm Watch is no longer active.")
-                }
+        Boolean stormwatchChanged = updateIfChanged(child, "stormwatchActive", data?.storm_mode_active) 
+        if (stormwatchChanged && settings.notifyWhenStormwatch) {
+            if (stormwatchMode) {
+                sendNotificationMessage("Powerwall Storm Watch mode is active.")
+            } else {
+                sendNotificationMessage("Powerwall Storm Watch is no longer active.")
             }
         }
+   
+        if (data.total_pack_energy > 1) //sometimes data appears invalid
+        {
+            float batteryPercent = data.energy_left.toFloat() / data.total_pack_energy.toFloat() * 100.0
+            float bpRounded = Math.round(batteryPercent * 10)/10 //rounded to one decimal place 
+            updateIfChanged(child, "battery", (bpRounded + 0.5).toInteger())
+            updateIfChanged(child, "batteryPercent", bpRounded)
+            
+            runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: child.currentValue("reservePercent")]]) 
+        }
+        Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
+        Boolean powerChanged = 
+           updateIfChanged(child, "loadPower", data.load_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "gridPower", data.grid_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "power", data.grid_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "solarPower", data.solar_power.toInteger(), powerDelta) |
+           updateIfChanged(child, "powerwallPower", data.battery_power.toInteger(), powerDelta)
+        
+        if (stormwatchChanged || powerChanged)
+        {
+           child.refreshChildDevices()
+        }
+        
+        if (!connectedToGateway()) {
+            //Do not update if connected to gateway, to prevent status data thrashing
+            updateGridStatus (data.grid_status)
+        }
+        state.lastCompletedTime = now()
     } else {
         if (status != 401) {
             if (callData?.attempt && callData.attempt < 2) {
@@ -2054,55 +2086,7 @@ def processSiteLiveStatusResponse(response, callData) {
         }
     }
 }
-
-def processPowerwallResponse(response, callData) {
-    //     log.debug "${callData}"
-    logger ("processing server powerwall response","debug")
-    if (!response.hasError()) {
-        def data = response.json.response
-        logger ("${data}","trace")  
-        def child = getPwDevice()
-        updateOpModeAndReserve(data.operation, data.backup?.backup_reserve_percent?.toInteger()) 
-        
-        if (data.total_pack_energy > 1) //sometimes data appears invalid
-        {
-            float batteryPercent = data.energy_left.toFloat() / data.total_pack_energy.toFloat() * 100.0
-            float bpRounded = Math.round(batteryPercent * 10)/10 //rounded to one decimal place 
-            updateIfChanged(child, "battery", (bpRounded + 0.5).toInteger())
-            updateIfChanged(child, "batteryPercent", bpRounded)
-            runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: data.backup.backup_reserve_percent]])
-        }
-        Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
-        if (updateIfChanged(child, "loadPower", data.power_reading.load_power[0].toInteger(), powerDelta) |
-           updateIfChanged(child, "gridPower", data.power_reading.grid_power[0].toInteger(), powerDelta) |
-           updateIfChanged(child, "power", data.power_reading.grid_power[0].toInteger(), powerDelta) |
-           updateIfChanged(child, "solarPower", data.power_reading.solar_power[0].toInteger(), powerDelta) |
-           updateIfChanged(child, "powerwallPower", data.power_reading.battery_power[0].toInteger(), powerDelta)) 
-        {
-           child.refreshChildDevices()
-        }
-        if (!connectedToGateway()) {
-            //Do not update if connected to gateway, to prevent status data thrashing
-            updateGridStatus (data.grid_status)
-        }
-        updateIfChanged(child, "siteName", data.site_name.toString())
-        if (data?.user_settings?.storm_mode_enabled != null) {
-            Boolean changed = updateIfChanged(child, "stormwatch", data.user_settings.storm_mode_enabled.toBoolean())
-            if (changed) {
-                pwDevice.refreshChildDevices()
-            }
-        }
-        state.lastCompletedTime = now()
-    } else {
-        if (callData?.attempt && callData.attempt < 2) {
-            logger ("Powerwall response error on attempt ${callData.attempt}: ${response.getErrorMessage()}. Retrying...", "debug")
-            runIn(30, requestPwData, [data: [attempt: callData.attempt + 1]])
-        } else {
-            logger ("Powerwall response error after ${callData?.attempt} attempts: ${response.getStatus()} ${response.getErrorMessage()}.","warn")
-        }
-    }
-}
-
+                           
 void processOffGridActions() {
     logger ("processing off grid actions","debug")
     def child = getPwDevice()
@@ -2173,22 +2157,12 @@ void requestGatewaySiteData() {
     }   
 }
 
-void requestPwData(data) {
-    if (!state?.lastPwRequestTime || now() - state.lastPwRequestTime > 1000) {
-        Integer tryCount = data?.attempt ?: 1
-        if (state.serverVerified) {
-            httpAuthAsyncGet('processPowerwallResponse', "/api/1/powerwalls/${state.pwId}", tryCount)
-        }
-        state.lastPwRequestTime = now()
-    }
-}
-
 void commandOpMode(data) {
     httpAuthPost(body: [default_real_mode: data.mode], "${data.mode} mode", "/api/1/energy_sites/${state.energySiteId}/operation", {
         resp ->
         //log.debug "${resp.data}"
     })
-    runIn(2, requestPwData)
+    runIn(2, requestSiteInfo)
     runIn(30, processWatchdog)
 }
 
@@ -2272,7 +2246,7 @@ void commandBackupReservePercent(data) {
     "/api/1/energy_sites/${state.energySiteId}/backup", {
         resp ->
     })
-    runIn(2, requestPwData)
+    runIn(2, requestSiteInfo)
     runIn(30, processWatchdog)
 }
 
@@ -2295,7 +2269,7 @@ void commandGoOffGrid(data) {
                         logger("response ${response}","debug")
                       }
     
-        runIn(2, requestPwData)
+        runIn(2, requestSiteLiveStatus)
         runIn(30, processWatchdog)
     } catch (Exception e) {
         logger ("Error setting local gateway island status: ${e}","warn")
@@ -2325,7 +2299,7 @@ void commandStormwatchEnable() {
     httpAuthPost(body: [enabled: true], "stormwatch mode enable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
         resp -> //log.debug "${resp.data}"
     })
-    runIn(3, requestPwData)
+    runIn(3, requestSiteInfo)
     runIn(30, processWatchdog)
 }
 
@@ -2333,7 +2307,7 @@ void commandStormwatchDisable() {
     httpAuthPost(body: [enabled: false], "stormwatch mode enable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
         resp -> //log.debug "${resp.data}"
     })
-    runIn(2, requestPwData)
+    runIn(2, requestSiteInfo)
     runIn(30, processWatchdog)
 }
 
@@ -2410,39 +2384,6 @@ void processWatchdog() {
     }
 }
 
-void checkAndMigrateFromPreviousVersion() {
-    //backward compatibility check 3-June-2021. To be removed in future release 
-    if (state.foundPowerwalls && state.serverVerified == null) {
-        log.debug "Migrating server info from previous version"
-        state.serverVerified = true
-        state.foundPowerwalls = null
-    }
-    if (state.scheduleList == null && state.lastProcessedTime != null) {
-        log.debug "Migrating schedule info from previous version"
-        state.scheduleList = []
-        state.scheduleNumUsed = []
-        Boolean schedNumExists
-        Integer schedIndex = 0
-        state.scheduleCount = 0
-        for (i in 1..7) {
-            schedNumExists = (settings["schedule${i}Time"] != null)
-            state.scheduleNumUsed[i-1] = schedNumExists
-            if (schedNumExists) {
-                state.scheduleCount =  state.scheduleCount = + 1
-                state.scheduleList [schedIndex] = i
-                schedIndex = schedIndex + 1
-            }
-        }
-    }
-}
-         
-//backward compatability for release update - rename of method 3-Jun-2021. Will be removed on future release
-void processMain() {
-    logger ("Re-initializing due to code version update.","warn")
-    checkAndMigrateFromPreviousVersion()
-    runIn(1, initialize) //processMain will never be called again with new code
-}
-
 void scheduleRefreshAccessToken() {
     if (state.tokenExpiration) {
         Long refreshDateEpoch = state.tokenExpiration - oneHourMs*2.5 // 2.5 hours before expiration
@@ -2468,7 +2409,6 @@ void processServerMain() {
     //    state.forceSrvrFailure=true
     //    app.updateSetting("inputAccessToken",[type:"text",value:"  "])
     //}   
-    checkAndMigrateFromPreviousVersion()
     state.lastProcessedTime = now()
     def lastStateProcessTime
     if (state.lastStateRunTime == null) {
@@ -2479,9 +2419,9 @@ void processServerMain() {
     def secondsSinceLastRun = (now() - lastStateProcessTime) / 1000
     if (secondsSinceLastRun > 60) {
         state.lastStateRunTime = now()
-        runIn(1, requestPwData)
+        runIn(1, requestSiteLiveStatus)
         runIn(10, requestSiteInfo)
-        runIn(15, requestSiteLiveStatus)
+       
         if ((settings.notifyTokenAge == null || settings.notifyOfTokenAge) && state.tokenChangeTime && !state.tokenAgeWarnSent) {
             Integer tokenAgeDays = ((now() - state.tokenChangeTime)/oneDayMs).toInteger()
             if (tokenAgeDays > 40) {
