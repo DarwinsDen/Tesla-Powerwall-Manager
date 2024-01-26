@@ -2,8 +2,8 @@
   "packageName": "Tesla Powerwall Manager",
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
-  "dateReleased": "2023-10-23",
-  "releaseNotes": "v0.3.80:\n- Update for Tesla API change (removal of api/1/powerwalls).",
+  "dateReleased": "2024-01-26",
+  "releaseNotes": "v0.3.81:\n- Update for Tesla API auth change. Add commands for energy export mode and grid charging.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.80"
+      "version": "0.3.81"
     }
   ],
   "drivers": [
@@ -24,7 +24,7 @@
       "namespace": "darwinsden",
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/devicetypes/darwinsden/tesla-powerwall.src/tesla-powerwall.groovy",
       "required": true,
-      "version": "0.2.31"
+      "version": "0.2.32"
     }
   ]
 }
