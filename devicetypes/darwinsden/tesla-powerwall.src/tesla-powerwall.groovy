@@ -1,7 +1,7 @@
 /**
  *  Tesla Powerwall 
  *
- *  Copyright 2019-2022 DarwinsDen.com
+ *  Copyright 2019-2024 DarwinsDen.com
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -12,6 +12,7 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
 
+ *  26-Jan-2024 >>> v0.2.32.20240126 - Add commands for energy export mode and grid charging.
  *  15-Mar-2022 >>> v0.2.31.20220315 - Added contact sensor capability to indicate grid status (open=off-grid).
  *  02-Feb-2022 >>> v0.2.30.20220202 - Add child device creation option for additional SmartThings and Hubitat control/display capability
  *  29-Dec-2021 >>> v0.2.20.20211229 - Merge from @x10send: Added Off Grid and Refresh Token Support
@@ -54,6 +55,8 @@ metadata {
         attribute "gridStatus", "enum", ["offGrid", "onGrid"]
         attribute "pwTile", "string"
         attribute "stormwatchActive", "enum", ["true", "false"]
+        attribute "energyExportMode", "string"
+        attribute "gridChargingEnabled", "enum", ["true", "false"]
 
         command "setBackupReservePercent", ["number"]
         command "raiseBackupReserve"
@@ -65,6 +68,10 @@ metadata {
         command "setTbcCostSaving"
         command "enableStormwatch"
         command "disableStormwatch"
+        command "enableGridCharging"
+        command "disableGridCharging"
+        command "setEnergyExportModeSolarOnly"
+        command "setEnergyExportModeEverything"
         command "goOffGrid"
         command "goOnGrid"
         command "refreshAuth"
@@ -129,6 +136,22 @@ def enableStormwatch() {
 
 def disableStormwatch() {
     parent.disableStormwatch(this)
+}
+
+def enableGridCharging() {
+    parent.enableGridCharging(this)
+}
+
+def disableGridCharging() {
+    parent.disableGridCharging(this)
+}
+
+def setEnergyExportModeSolarOnly() {
+    parent.setEnergyExportModeSolarOnly(this)
+}
+
+def setEnergyExportModeEverything() {
+    parent.setEnergyExportModeEverything(this)
 }
 
 def setBackupReservePercent(value) {
