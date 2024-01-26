@@ -1,7 +1,7 @@
 /**
  *  Tesla Powerwall Manager 
  * 
- *  Copyright 2019-2022 DarwinsDen.com
+ *  Copyright 2019-2024 DarwinsDen.com
  *  
  *  ****** WARNING ****** USE AT YOUR OWN RISK!
  *  This software was developed in the hopes that it will be useful to others, however, 
@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.80.20231023"
+    return "v0.3.81.20240126"
 }
 
 /* 
+ * 26-Jan-2024 >>> v0.3.81.20240126 - Update for Tesla API auth change. Add commands for energy export mode and grid charging.
  * 23-Oct-2023 >>> v0.3.80.20231023 - Update for Tesla API change - removal of api/1/powerwalls.
  * 05-Apr-2022 >>> v0.3.71.20220405 - Correct patch refresh date check integer overflow issue.
  * 05-Apr-2022 >>> v0.3.70.20220405 - Apparent Tesla auth change - quick patch.
@@ -1341,7 +1342,8 @@ private getSecret() {
     "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3"
 }
 private getAgent() {
-    "darwinsden"
+    "TeslaApp/4.10.0"
+    //"darwinsden/hubitat"
 }
     
 String getToken() {
@@ -1377,7 +1379,7 @@ private httpAuthAsyncGet(handlerMethod, String path, Integer attempt = 1) {
           def requestParameters = [
               uri: teslaUrl,
               path: path,
-              headers: ['User-Agent': agent, Authorization: "Bearer ${theToken}"]
+              headers: ['User-Agent': agent, 'X-Tesla-User-Agent': agent, Authorization: "Bearer ${theToken}"]
             ]
           if (hubIsSt()) {
               include 'asynchttp_v1'
@@ -1398,7 +1400,7 @@ private httpAuthGet(String path, Closure closure, authToken = null) {
     if (authToken == null) {
         authToken = token
     }
-    def requestParameters = [uri: teslaUrl, path: path, headers: ['User-Agent': agent, Authorization: "Bearer ${authToken}"]]
+    def requestParameters = [uri: teslaUrl, path: path, headers: ['User-Agent': agent, 'X-Tesla-User-Agent': agent, Authorization: "Bearer ${authToken}"]]
     httpGet(requestParameters) {resp -> closure(resp)}
 }
 
@@ -1413,7 +1415,7 @@ private httpAuthPost(Map params = [:], String cmdName, String path, Closure clos
     if (authToken) {
        logger ("Command: ${cmdName} ${params?.body}" + attemptStr,"debug")
        try {
-           def requestParameters = [uri: teslaUrl, path: path, headers: ['User-Agent': agent, Authorization: "Bearer ${authToken}"]]
+           def requestParameters = [uri: teslaUrl, path: path, headers: ['User-Agent': agent, 'X-Tesla-User-Agent': agent, Authorization: "Bearer ${authToken}"]]
            if (params.body) {
                requestParameters["body"] = params.body
                httpPostJson(requestParameters) {resp -> closure(resp)}
@@ -1999,15 +2001,17 @@ void updateOptimizationStrategy(String strategy) {
 }
     
 def processSiteInfoResponse(response, callData) {
-    logger ("processing server site data response","debug")
+    logger ("processing server site info response","debug")
     if (!response.hasError()) {
         def data = response.json.response
-        logger ("Site: ${data}","trace")
+        logger ("Site Info: ${data}","trace")
         updateOptimizationStrategy (data?.tou_settings?.optimization_strategy)
         if (data?.tou_settings?.schedule && notifyWhenModesChange?.toBoolean() && state.lastSchedule && data.tou_settings.schedule != state.lastSchedule) {
             sendNotificationMessage("Powerwall Advanced Time Controls schedule has changed")
         }
-        state.lastSchedule = data.tou_settings.schedule
+        if (data.tou_settings?.schedule) {
+            state.lastSchedule = data.tou_settings.schedule
+        }
         updateVersion (data.version)    
         updateOpModeAndReserve(data.default_real_mode, data.backup_reserve_percent?.toInteger()) 
         def child = getPwDevice()
@@ -2016,6 +2020,16 @@ def processSiteInfoResponse(response, callData) {
             if (changed) {
                 child.refreshChildDevices()
             }
+        }
+        if (data.components?.customer_preferred_export_rule != null) {
+            updateIfChanged(child, "energyExportMode", data.components.customer_preferred_export_rule)
+        }
+
+        if (data.components?.disallow_charge_from_grid_with_solar_installed != null) {
+            updateIfChanged(child, "gridChargingEnabled", !data.components.disallow_charge_from_grid_with_solar_installed)
+        } else {
+            //Grid Charging with solar status status only appears if disabled..
+            updateIfChanged(child, "gridChargingEnabled", true)
         }
         updateIfChanged(child, "siteName", data.site_name.toString())
     } else {
@@ -2086,7 +2100,7 @@ def processSiteLiveStatusResponse(response, callData) {
         }
     }
 }
-                           
+
 void processOffGridActions() {
     logger ("processing off grid actions","debug")
     def child = getPwDevice()
@@ -2211,8 +2225,8 @@ void commandTouStrategy(data) {
         log.debug "Exception ${e} getting latest schedule"
     }
     if (latestSchedule == null) {
-        //log.debug "setting latest schedule to last known state"
-        latestSchedule = state.lastSchedule
+       //log.debug "setting latest schedule to last known state"
+       latestSchedule = state.lastSchedule
     }
 
     def commands = [tou_settings: [optimization_strategy: data.strategy, schedule: latestSchedule]]
@@ -2304,7 +2318,7 @@ void commandStormwatchEnable() {
 }
 
 void commandStormwatchDisable() {
-    httpAuthPost(body: [enabled: false], "stormwatch mode enable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
+    httpAuthPost(body: [enabled: false], "stormwatch mode disable", "/api/1/energy_sites/${state.energySiteId}/storm_mode", {
         resp -> //log.debug "${resp.data}"
     })
     runIn(2, requestSiteInfo)
@@ -2320,6 +2334,64 @@ void disableStormwatch(child) {
     logger ("commanding stormwatch off","debug")
     runIn(2, commandStormwatchDisable)
 }
+
+void commandGridChargingEnable() {
+    httpAuthPost(body: [disallow_charge_from_grid_with_solar_installed: false], "grid charging enable", "/api/1/energy_sites/${state.energySiteId}/grid_import_export", {
+        resp -> //log.debug "${resp.data}"
+    })
+    runIn(2, requestSiteInfo) 
+    runIn(30, processWatchdog)
+}
+
+void commandGridChargingDisable() {
+    httpAuthPost(body: [disallow_charge_from_grid_with_solar_installed: true], "grid charging disable", "/api/1/energy_sites/${state.energySiteId}/grid_import_export", {
+        resp -> //log.debug "${resp.data}"
+    })
+    runIn(2, requestSiteInfo) 
+    runIn(30, processWatchdog)
+}
+
+void enableGridCharging(child) {
+    logger ("commanding grid charging on","debug")
+    runIn(2, commandGridChargingEnable)
+}
+
+void disableGridCharging(child) {
+    logger ("commanding grid charging off","debug")
+    runIn(2, commandGridChargingDisable)
+}
+
+void commandEnergyExportModeSolarOnly() {
+    httpAuthPost(body: [customer_preferred_export_rule: "pv_only"], "energy export mode solar-only", "/api/1/energy_sites/${state.energySiteId}/grid_import_export", {
+        resp -> //log.debug "${resp.data}"
+    })
+    runIn(3, requestSiteInfo)
+    runIn(30, processWatchdog)
+}
+
+void commandEnergyExportModeEverything() {
+    httpAuthPost(body: [customer_preferred_export_rule: "battery_ok"], "energy export mode everything", "/api/1/energy_sites/${state.energySiteId}/grid_import_export", {
+        resp -> //log.debug "${resp.data}"
+    })
+    runIn(2, requestSiteInfo)
+    runIn(30, processWatchdog)
+}
+
+void setEnergyExportModeSolarOnly(child) {
+    logger ("setting export mode to solar only","debug")
+    runIn(2, commandEnergyExportModeSolarOnly)
+}
+
+void setEnergyExportModeEverything(child) {
+    logger ("setting export mode to battery and solar","debug")
+    runIn(2, commandEnergyExportModeEverything)
+}
+
+
+
+
+
+
 
 def refresh(child) {
     if (logLevel == "debug" | logLevel == "trace") {
