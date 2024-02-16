@@ -19,10 +19,12 @@
  */
 
 String version() {
-    return "v0.3.81.20240126"
+    return "v0.3.82.20240216"
 }
 
 /* 
+ * 16-Feb-2024 >>> v0.3.82.20240216 - Add battery capacity/total energy - thank you D. Mills for the code snippet. Added grid charging enable/
+ *                                    disable to scheduler. Removed Tesla deprecated calls from scheduler (set TOU-Strategy, set Backup-Only mode)
  * 26-Jan-2024 >>> v0.3.81.20240126 - Update for Tesla API auth change. Add commands for energy export mode and grid charging.
  * 23-Oct-2023 >>> v0.3.80.20231023 - Update for Tesla API change - removal of api/1/powerwalls.
  * 05-Apr-2022 >>> v0.3.71.20220405 - Correct patch refresh date check integer overflow issue.
@@ -167,9 +169,9 @@ def pageSchedules() {
             state.scheduleCount = 0
             if (state.scheduleList && state.scheduleList.size() > 0) {
                state.scheduleList.eachWithIndex {item, index ->
-                   String actionsStr = getActionsString(schedVal(item,"Mode"), schedVal(item,"Reserve"),schedVal(item,"Stormwatch"), schedVal(item,"Strategy"), null, schedVal(item,"GridStatus"))
+                   String actionsStr = getActionsString(schedVal(item,"Mode"), schedVal(item,"Reserve"),schedVal(item,"Stormwatch"), schedVal(item,"GridCharging"), null, schedVal(item,"GridStatus"))
                    String whenStr = getWhenString(schedVal(item,"Time"), schedVal(item,"Days"),schedVal(item,"Months"))
-                   Boolean actionsOk = actionsValid(schedVal(item,"Mode"), schedVal(item,"Reserve"),schedVal(item,"Stormwatch"),schedVal(item,"Strategy"), null,schedVal(item,"GridStatus"))
+                   Boolean actionsOk = actionsValid(schedVal(item,"Mode"), schedVal(item,"Reserve"),schedVal(item,"Stormwatch"),schedVal(item,"GridCharging"), null,schedVal(item,"GridStatus"))
                    Boolean whenOk = scheduleValid(schedVal(item,"Time"), schedVal(item,"Days"))
                    Boolean disabled = schedVal(item,"Disable") == "true"
  
@@ -197,12 +199,12 @@ def pageSchedules() {
             if (!hubIsSt()) {
                 //Apparent bug in Hubitat - Can't set params in a second 'section' or it will send that instead of what's in first section - keep all in the same section
                 paragraph "\n"
-                hrefMenuPage ("pageScheduleOptions", "Create a new Powerwall schedule..", "", addIcon, [newSchedule: true], null)
+                hrefMenuPage ("pageScheduleOptions", "Create a new Powerwall scheduled action..", "", addIcon, [newSchedule: true], null)
             }
         }
         if (hubIsSt() && state.scheduleCount < maxSmartThingsSchedules) {
             section("") {
-                hrefMenuPage ("pageScheduleOptions", "Create a new Powerwall schedule..", "", addIcon, [newSchedule: true], null)
+                hrefMenuPage ("pageScheduleOptions", "Create a new Powerwall scheduled action..", "", addIcon, [newSchedule: true], null)
             }
         }
     }
@@ -263,8 +265,8 @@ def pageScheduleOptions(params) {
         dynamicPage(name: "pageScheduleOptions", title: schedNameFromIndex(schedIndex), install: false, uninstall: false) { 
             state.editingScheduleIndex = schedIndex
             section("Select Powerwall actions to apply:") {
-               String actionsString = getActionsString(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"),schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"Strategy"), null, schedVal(schedNum,"GridStatus"))
-               Boolean complete = actionsValid(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"),schedVal(schedNum,"Stormwatch"),schedVal(schedNum,"Strategy"), null, schedVal(item,"GridStatus"))
+               String actionsString = getActionsString(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"),schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"GridCharging"), null, schedVal(schedNum,"GridStatus"))
+               Boolean complete = actionsValid(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"),schedVal(schedNum,"Stormwatch"),schedVal(schedNum,"GridCharging"), null, schedVal(item,"GridStatus"))
                href "pagePwActions", title: actionsString, state: complete ? "complete" : null, description : "",
                    params: [prefix: "schedule${schedNum}", title : "Select at least one Powerwall action to apply:"]
             }
@@ -282,8 +284,8 @@ def pageScheduleOptions(params) {
                 if (hubIsSt()) {
                     href "pageDeleteSchedule", title: "Delete this schedule", image: trashIcon, description: ""
                 } else {
-                    String trash = "<img src='${trashIcon}' width='30' style='float: left; width: 30px; padding: 3px 16px 0 0'>"
-                    input name: "deleteSchedule", type: "button", title: trash + " Delete this schedule",submitOnChange: true
+                    String trash = "<img src='${trashIcon}' width='25' style='float: left; width: 25px; margin: 5px 8px 0 0;'>"
+                    input name: "deleteSchedule", type: "button", title: trash + "Delete this schedule",submitOnChange: true
                 }
             }
         }
@@ -322,7 +324,7 @@ void clearScheduleData (data) {
     Integer schedNum = data.schedNum
     app.updateSetting("schedule${schedNum}Name",[type:"text",value:""])
     app.updateSetting("schedule${schedNum}Mode",[type:"enum",value:""])
-    app.updateSetting("schedule${schedNum}Strategy",[type:"enum",value:""])
+    app.updateSetting("schedule${schedNum}GridCharging",[type:"enum",value:""])
     app.updateSetting("schedule${schedNum}Months",[type:"enum",value:""])
     app.updateSetting("schedule${schedNum}Disable",[type:"bool",value:null])
     app.updateSetting("schedule${schedNum}Days",[type:"enum",value:""])
@@ -901,11 +903,11 @@ def pageTriggers() {
             Boolean actionsOk 
             state.triggerActionsActive = false
             //Above Actions
-            actionsOk = actionsValid(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, aboveTriggerDevicesToOn, aboveTriggerGridStatus) &&
+            actionsOk = actionsValid(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerGridCharging, aboveTriggerDevicesToOn, aboveTriggerGridStatus) &&
                 aboveTriggerValue && aboveTriggerEnabled?.toBoolean()
             state.triggerActionsActive = actionsOk
             if (actionsOk) {
-                String actionsString = getActionsString(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, aboveTriggerDevicesToOn, aboveTriggerGridStatus)
+                String actionsString = getActionsString(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerGridCharging, aboveTriggerDevicesToOn, aboveTriggerGridStatus)
                 message = "When Powerwall is above ${aboveTriggerValue?.toString()}%:\n" + actionsString + "\n(notification will also be sent if enabled in preferences)"
             } else {
                 message = "Select to enable Upper % charge level actions.."
@@ -914,11 +916,11 @@ def pageTriggers() {
                 description: message, params : [aboveOrBelow : "above"]
  
             //Below Actions
-            actionsOk = actionsValid(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, belowTriggerDevicesToOff, belowTriggerGridStatus) &&  
+            actionsOk = actionsValid(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerGridCharging, belowTriggerDevicesToOff, belowTriggerGridStatus) &&  
                 belowTriggerValue && belowTriggerEnabled?.toBoolean()
             state.triggerActionsActive = state.triggerActionsActive || actionsOk
             if (actionsOk) {
-                String actionsString = getActionsString(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, belowTriggerDevicesToOff, belowTriggerGridStatus)
+                String actionsString = getActionsString(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerGridCharging, belowTriggerDevicesToOff, belowTriggerGridStatus)
                 message = "When Powerwall is below ${belowTriggerValue?.toString()}%:\n" + actionsString + "\n(notification will also be sent if enabled in preferences)"
             } else {
                 message = "Select to enable Lower % charge level actions.."
@@ -975,13 +977,13 @@ def pagePwActions(params) {
     state.lastPwActionPrefix = prefix
     dynamicPage(name: "pagePwActions", title: title, install: false, uninstall: false) { 
         section() {
-            input "${prefix}Mode", "enum", required: false, title: "Set Mode", options: ["No Action", "Backup-Only", "Self-Powered", "Time-Based Control"]
+            input "${prefix}Mode", "enum", required: false, title: "Set Mode", options: ["No Action", "Self-Powered", "Time-Based Control"]
             input "${prefix}Reserve", "enum", required: false, title: "Set Reserve %",
                options: ["No Action": "No Action", "0": "0%", "5": "5%", "10": "10%", "15": "15%", "20": "20%", "25": "25%", "30": "30%", "35":
                       "35%", "40": "40%", "45": "45%", "50": "50%",
                       "55": "55%", "60": "60%", "65": "65%", "70": "70%", "75": "75%", "80": "80%", "85": "85%", "90": "90%", "95": "95%", "100": "100%"]
             input "${prefix}Stormwatch", "enum", required: false, title: "Set Storm Watch mode enable/disable", options: ["No Action", "Enable Stormwatch", "Disable Stormwatch"]
-            input "${prefix}Strategy", "enum", required: false, title: "Set Strategy for Time-Based Control", options: ["No Action", "Cost Saving","Balanced"]
+            input "${prefix}GridCharging", "enum", required: false, title: "Set Grid Charging enable/disable", options: ["No Action", "Enable Grid Charging","Disable Grid Charging"]
             if (!hubIsSt()){
                 input "${prefix}GridStatus", "enum", required: false, title: "Set Grid Status", options: ["No Action", "Go On Grid","Go Off Grid"]
             }
@@ -999,11 +1001,11 @@ def pageTriggerOptions(params) {
             String onOrOff = aboveBelow == "above" ? "On" : "Off"
             input "${aboveBelow}TriggerDevicesTo${onOrOff}", "capability.switch", title:
                 "Select devices to turn ${onOrOff} when charge level % is ${aboveBelow} defined trigger", required: false, multiple: true
-            Boolean complete = actionsValid(settings["${aboveBelow}TriggerMode"], settings["${aboveBelow}TriggerReserve"],settings["${aboveBelow}TriggerStormwatch"],settings["${aboveBelow}TriggerStrategy"], null, settings["${aboveBelow}TriggerGridStatus"])
+            Boolean complete = actionsValid(settings["${aboveBelow}TriggerMode"], settings["${aboveBelow}TriggerReserve"],settings["${aboveBelow}TriggerStormwatch"],settings["${aboveBelow}TriggerGridCharging"], null, settings["${aboveBelow}TriggerGridStatus"])
             String actionsString 
             if (complete) {
                actionsString = getActionsString(settings["${aboveBelow}TriggerMode"], settings["${aboveBelow}TriggerReserve"],settings["${aboveBelow}TriggerStormwatch"], 
-                           settings["${aboveBelow}TriggerStrategy"], null,settings["${aboveBelow}TriggerGridStatus"])
+                           settings["${aboveBelow}TriggerGridCharging"], null,settings["${aboveBelow}TriggerGridStatus"])
             } else {
                actionsString = "No Powerwall actions defined.."
             }
@@ -1048,12 +1050,12 @@ private getHubType() {
     return state.hubType
 }
 
-Boolean actionsValid(modeSetting, reserveSetting, stormwatchSetting, strategySetting, devicesToControl, gridStatus) {
-    logger("Mode setting: ${modeSetting}, Reserve: ${reserveSetting}, Stormwatch: ${stormwatchSetting}, Strategy: ${strategySetting}, devicesToControl: ${devicesToControl}, Grid Status: ${gridStatus}","debug")
+Boolean actionsValid(modeSetting, reserveSetting, stormwatchSetting, gridChargingSetting, devicesToControl, gridStatus) {
+    logger("Mode setting: ${modeSetting}, Reserve: ${reserveSetting}, Stormwatch: ${stormwatchSetting}, GridCharging: ${gridChargingSetting}, devicesToControl: ${devicesToControl}, Grid Status: ${gridStatus}","debug")
     return ((modeSetting && modeSetting.toString() != "No Action") ||
         (reserveSetting && reserveSetting.toString() != "No Action") ||
         (stormwatchSetting && stormwatchSetting.toString() != "No Action") ||
-        (strategySetting && strategySetting.toString() != "No Action") ||
+        (gridChargingSetting && gridChargingSetting.toString() != "No Action") ||
         (gridStatus && gridStatus.toString() != "No Action") ||
         (devicesToControl && devicesToControl.toString() != "N/A" && devicesToControl.size() > 0))
 }
@@ -1092,9 +1094,9 @@ String getWhenString(timeSetting, daysSetting, monthSetting) {
     return str
 }
 
-String getActionsString(modeSetting, reserveSetting, stormwatchSetting, strategySetting, controlDevices, gridStatusSetting) {
+String getActionsString(modeSetting, reserveSetting, stormwatchSetting, gridChargingSetting, controlDevices, gridStatusSetting) {
     String str = ''
-    if (actionsValid(modeSetting, reserveSetting, stormwatchSetting, strategySetting, controlDevices, gridStatusSetting)) {
+    if (actionsValid(modeSetting, reserveSetting, stormwatchSetting, gridChargingSetting, controlDevices, gridStatusSetting)) {
         if (modeSetting && modeSetting.toString() != "No Action") {
             str = "Mode: " + modeSetting.toString()
         }
@@ -1108,9 +1110,13 @@ String getActionsString(modeSetting, reserveSetting, stormwatchSetting, strategy
                 str = appendOnNewLine(str, "Stormwatch: Disable")
             }
         }
-        if (strategySetting && strategySetting.toString() != "No Action") {
-            str = appendOnNewLine(str, "Time-Based Control Strategy: " + strategySetting.toString())
-        }
+        if (gridChargingSetting && gridChargingSetting.toString() != "No Action") {
+            if (gridChargingSetting.toString() == "Enable Grid Charging") {
+                str = appendOnNewLine(str, "Grid Charging: Enable")
+            } else if (gridChargingSetting.toString() == "Disable Grid Charging") {
+                str = appendOnNewLine(str, "Grid Charging: Disable")
+            }
+        }        
         if (controlDevices && controlDevices.size() > 0) {
             str = appendOnNewLine(str, "Control Devices: ${controlDevices}")               
         }
@@ -1135,7 +1141,7 @@ void setSchedules() {
        for(int i in 0 .. state.scheduleList.size() - 1) {
            Integer schedNum = state.scheduleList[i]
            if (!(schedVal(schedNum,"Disable") == "true")) {
-             if (actionsValid(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"), schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"Strategy"), null, schedVal(schedNum,"GridStatus"))) {
+             if (actionsValid(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"), schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"GridCharging"), null, schedVal(schedNum,"GridStatus"))) {
                 if (scheduleValid(schedVal(schedNum,"Time"), schedVal(schedNum,"Days"))) {
                     logger ("Scheduling index: ${i + 1} num: ${schedNum} for time ${schedVal(schedNum,"Time")}","debug")
                     if (hubIsSt()) {
@@ -1145,7 +1151,7 @@ void setSchedules() {
                     }
                     //schedule(schedVal(schedNum,"Time"), processSchedule, [data: [schedNum: schedNum], overwrite: false])  //[data: [message: msg], overwrite: false]
                 } else {
-                    String msg = "Powerwall Manager Schedule index: ${i + 1} num: ${schedNum} actions are enabled in preferences, but schedule time and/or days were not specified. Schedule could not be set."
+                    String msg = "Powerwall Manager Schedule index: ${i + 1} num: ${schedNum}. Actions are enabled in preferences, but schedule time and/or days were not specified. Schedule could not be set."
                     logger (msg,"warn")
                     //sendNotificationMessage(msg, "anomaly")
                 }
@@ -1201,7 +1207,7 @@ Boolean triggerPeriodActive() {
     return ((dayIsActive && (aPeriodIsActive || !aPeriodIsSet)) || (!daysAreSet && (aPeriodIsActive || !aPeriodIsSet)))
 }
 
-String commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTriggers, gridStatus) {
+String commandPwActions(mode, reserve, stormwatch, gridCharging, enableChargeTriggers, gridStatus) {
     def pwDevice = getPwDevice()
     String message = ""
     if (mode && mode.toString() != "No Action") {
@@ -1238,14 +1244,14 @@ String commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTrigger
             runIn(15, commandStormwatchDisable)
         }
     }
-    if (strategy && strategy.toString() != "No Action") {
-        message = message + " TBC Strategy: ${strategy.toString()}."
-        if (strategy.toString() == "Cost Saving") {
-            runIn(20, commandTouStrategy, [data: [strategy: "economics"]])
-        } else if (strategy.toString() == "Balanced") {
-            runIn(20, commandTouStrategy, [data: [strategy: "balanced"]])
+    if (gridCharging && gridCharging.toString() != "No Action") {
+        message = message + " Grid Charging: ${gridCharging.toString()}."
+        if (gridCharging.toString() == "Enable Grid Charging") {
+            runIn(20, commandGridChargingEnable)
+        } else if (gridCharging.toString() == "Disable Grid Charging") {
+            runIn(20, commandGridChargingDisable)
         } else {
-            String errMessage = "Unexpected condition processing scheduled strategy change: ${strategy.toString()}"
+            String errMessage = "Unexpected condition processing scheduled gridCharging change: ${gridCharging.toString()}"
             sendNotificationMessage(errMessage, "anomaly")
         }
     }
@@ -1271,7 +1277,7 @@ String commandPwActions(mode, reserve, stormwatch, strategy, enableChargeTrigger
 
 Boolean schedDayMonthValid (Integer schedNum, String day, String month) {
     Boolean monthValid = !schedVal(schedNum,"Months") || schedVal(schedNum,"Months").contains(month)
-    Boolean dayValid = schedVal(schedNum,"Days").contains(day)
+    Boolean dayValid = schedVal(schedNum,"Days") && schedVal(schedNum,"Days").contains(day)
     return dayValid && monthValid && !(schedVal(schedNum,"Disable") == "true")
 }
 
@@ -1279,7 +1285,7 @@ void processSchedule(data) {
     Integer schedNum = data.schedNum
     if (schedDayMonthValid(schedNum, getTheDay(), getTheMonth())) {
         logger ("Executing schedule number ${schedNum}","debug")
-        String message = commandPwActions(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"), schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"Strategy"), null, schedVal(schedNum,"GridStatus"))
+        String message = commandPwActions(schedVal(schedNum,"Mode"), schedVal(schedNum,"Reserve"), schedVal(schedNum,"Stormwatch"), schedVal(schedNum,"GridCharging"), null, schedVal(schedNum,"GridStatus"))
         if (notifyOfSchedules?.toBoolean()) {
             sendNotificationMessage("Performing scheduled Powerwall actions. " + message)
         }
@@ -1743,8 +1749,8 @@ void checkBatteryNotifications(data) {
                 if (triggerPeriodActive() && aboveTriggerEnabled) {
                     state.timeOfLastAboveTrigger = now()
                     String triggerMessage = "Powerwall ${Math.round(data.batteryPercent*10)/10}% battery level is at or above ${aboveTriggerValue}% trigger."
-                    if (actionsValid(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, aboveTriggerDevicesToOn, aboveTriggerGridStatus)) {
-                        String message = commandPwActions(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerStrategy, null, aboveTriggerGridStatus)
+                    if (actionsValid(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerGridCharging, aboveTriggerDevicesToOn, aboveTriggerGridStatus)) {
+                        String message = commandPwActions(aboveTriggerMode, aboveTriggerReserve, aboveTriggerStormwatch, aboveTriggerGridCharging, null, aboveTriggerGridStatus)
                         if (aboveTriggerDevicesToOn?.size() > 0) {
                             message = message + " Turning on devices."
                             runIn(1, processAboveTriggerDeviceActions)
@@ -1768,8 +1774,8 @@ void checkBatteryNotifications(data) {
                 if (triggerPeriodActive() && belowTriggerEnabled) {
                     state.timeOfLastBelowTrigger = now()
                     String triggerMessage = "Powerwall ${Math.round(data.batteryPercent*10)/10}% battery level is at or below ${belowTriggerValue}% trigger."
-                    if (actionsValid(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, belowTriggerDevicesToOff, belowTriggerGridStatus)) {
-                        String message = commandPwActions(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerStrategy, null, belowTriggerGridStatus)
+                    if (actionsValid(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerGridCharging, belowTriggerDevicesToOff, belowTriggerGridStatus)) {
+                        String message = commandPwActions(belowTriggerMode, belowTriggerReserve, belowTriggerStormwatch, belowTriggerGridCharging, null, belowTriggerGridStatus)
                         if (belowTriggerDevicesToOff?.size() > 0) {
                             message = message + " Turning off devices."
                             runIn(1, processBelowTriggerDeviceActions)
@@ -1845,6 +1851,18 @@ void processGwSoeResponse(response, callData) {
     } else { 
         logger ("Error procesing gateway SOE: ${response.getStatus()} ${response.getErrorMessage()}","warn")
     }  
+}
+
+def processGwFullStatusResponse(response, callData) {
+   logger ("processing gateway full status response","debug")
+   if (!response.hasError()) {
+       def data = response.json
+       logger ("Gw Full status: ${data}","trace")
+       def child = getPwDevice()
+       updateIfChanged(child, "currentCapacity", data.nominal_full_pack_energy.toInteger())
+   } else {
+       logger ("Error procesing gateway full status: ${response.getStatus() ${response.getErrorMessage()}}","warn")
+   }      
 }
 
 void processGwOpResponse(response, callData) {
@@ -2069,7 +2087,11 @@ def processSiteLiveStatusResponse(response, callData) {
             float bpRounded = Math.round(batteryPercent * 10)/10 //rounded to one decimal place 
             updateIfChanged(child, "battery", (bpRounded + 0.5).toInteger())
             updateIfChanged(child, "batteryPercent", bpRounded)
-            
+            if (!connectedToGateway()) {
+                //Gateway value may be slightly different from server. Need to verify. Use gateway value only for now if available. 
+                updateIfChanged(child, "currentCapacity", data.total_pack_energy.toInteger())
+            }
+          
             runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: child.currentValue("reservePercent")]]) 
         }
         Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
@@ -2164,6 +2186,8 @@ void requestGatewaySiteData() {
     asynchttpGet(processGwSoeResponse, [uri: gwUri, path: "/api/system_status/soe", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
     asynchttpGet(processGwSiteNameResponse, [uri: gwUri, path: "/api/site_info/site_name", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
     asynchttpGet(processGwGridStatResponse, [uri: gwUri, path: "/api/system_status/grid_status", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
+    asynchttpGet(processGwFullStatusResponse, [uri: gwUri, path: "/api/system_status", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
+
     if (!connectedToTeslaServer()) {   
        //Only process if not connected to the Tesla server to prevent data thrashing
        asynchttpGet(processGwOpResponse, [uri: gwUri, path: "/api/operation", headers: gwHeader(), contentType: 'application/json', ignoreSSLIssues: true])
