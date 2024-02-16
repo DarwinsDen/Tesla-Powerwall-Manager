@@ -11,18 +11,18 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
-
+ *  16-Feb-2024 >>> v0.2.33.20240216 - Add battery capacity/total energy.
  *  26-Jan-2024 >>> v0.2.32.20240126 - Add commands for energy export mode and grid charging.
  *  15-Mar-2022 >>> v0.2.31.20220315 - Added contact sensor capability to indicate grid status (open=off-grid).
  *  02-Feb-2022 >>> v0.2.30.20220202 - Add child device creation option for additional SmartThings and Hubitat control/display capability
  *  29-Dec-2021 >>> v0.2.20.20211229 - Merge from @x10send: Added Off Grid and Refresh Token Support
- *	24-Oct-2021 >>> v0.2.10.20211024 - Added argument for setBackupReservePercent
- *	25-May-2020 >>> v0.2.0e.20200525 - Updated reserve +/- adjust for Hubitat
- *	02-Jul-2020 >>> v0.1.5e.20200702 - Added attribute Tile 
- *	22-Jan-2020 >>> v0.1.4e.20200122 - Added stormwatch enable/disable commands
- *	12-Aug-2019 >>> v0.1.3e.20190812 - Added grid/outage status/display
- *	29-Jul-2019 >>> v0.1.2e.20190729 - Disable reserve percent controls in backup-only mode
- *	23-Jul-2019 >>> v0.1.1e.20190723 - Initial beta release
+ *  24-Oct-2021 >>> v0.2.10.20211024 - Added argument for setBackupReservePercent
+ *  25-May-2020 >>> v0.2.0e.20200525 - Updated reserve +/- adjust for Hubitat
+ *  02-Jul-2020 >>> v0.1.5e.20200702 - Added attribute Tile 
+ *  22-Jan-2020 >>> v0.1.4e.20200122 - Added stormwatch enable/disable commands
+ *  12-Aug-2019 >>> v0.1.3e.20190812 - Added grid/outage status/display
+ *  29-Jul-2019 >>> v0.1.2e.20190729 - Disable reserve percent controls in backup-only mode
+ *  23-Jul-2019 >>> v0.1.1e.20190723 - Initial beta release
  *
  */
 
@@ -57,7 +57,8 @@ metadata {
         attribute "stormwatchActive", "enum", ["true", "false"]
         attribute "energyExportMode", "string"
         attribute "gridChargingEnabled", "enum", ["true", "false"]
-
+        attribute "currentCapacity", "number"
+          
         command "setBackupReservePercent", ["number"]
         command "raiseBackupReserve"
         command "lowerBackupReserve"
