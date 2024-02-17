@@ -19,10 +19,11 @@
  */
 
 String version() {
-    return "v0.3.82.20240216"
+    return "v0.3.83.20240216"
 }
 
 /* 
+ * 16-Feb-2024 >>> v0.3.83.20240216 - Re-add Backup-Only mode with deprecated warning.
  * 16-Feb-2024 >>> v0.3.82.20240216 - Add battery capacity/total energy - thank you D. Mills for the code snippet. Added grid charging enable/
  *                                    disable to scheduler. Removed Tesla deprecated calls from scheduler (set TOU-Strategy, set Backup-Only mode)
  * 26-Jan-2024 >>> v0.3.81.20240126 - Update for Tesla API auth change. Add commands for energy export mode and grid charging.
@@ -977,7 +978,11 @@ def pagePwActions(params) {
     state.lastPwActionPrefix = prefix
     dynamicPage(name: "pagePwActions", title: title, install: false, uninstall: false) { 
         section() {
-            input "${prefix}Mode", "enum", required: false, title: "Set Mode", options: ["No Action", "Self-Powered", "Time-Based Control"]
+            input "${prefix}Mode", "enum", submitOnChange: true, required: false, title: "Set Mode", options: ["No Action", "Self-Powered", "Time-Based Control", "Backup-Only"]
+            if (settings["${prefix}Mode"] == "Backup-Only") {
+                paragraph "<span style='color:red'>Warning:</span> As of September 2021, Backup-Only has been deprecated by Tesla. Tesla recommends setting to Self-Powered " +
+                    "with a Reserve of 100% instead." 
+            }            
             input "${prefix}Reserve", "enum", required: false, title: "Set Reserve %",
                options: ["No Action": "No Action", "0": "0%", "5": "5%", "10": "10%", "15": "15%", "20": "20%", "25": "25%", "30": "30%", "35":
                       "35%", "40": "40%", "45": "45%", "50": "50%",
