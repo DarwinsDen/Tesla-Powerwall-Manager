@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.82"
+      "version": "0.3.83"
     }
   ],
   "drivers": [
