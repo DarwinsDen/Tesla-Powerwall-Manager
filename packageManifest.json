@@ -2,8 +2,8 @@
   "packageName": "Tesla Powerwall Manager",
   "author": "DarwinsDen",
   "minimumHEVersion": "2.0.0",
-  "dateReleased": "2024-02-16",
-  "releaseNotes": "v0.3.83:\n-Re-add Backup-Only mode to scheduler with deprecated warning\nv0.3.82:\n- Add battery capacity/total energy.\n- Added grid charging enable/disable to scheduler.\n- Removed Tesla deprecated calls from scheduler (set TOU-Strategy, set Backup-Only mode). These should no longer have been functional, but please let me know if there are related issues.",
+  "dateReleased": "2024-04-08",
+  "releaseNotes": "v0.3.84:\n-Correct for apparent Tesla server API change related to battery percentage. Thanks to @NeilR.",
   "licenseFile": "https://www.apache.org/licenses/LICENSE-2.0.txt",
   "documentationLink": "https://darwinsden.com/powerwall/",
   "apps": [
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/DarwinsDen/Tesla-Powerwall-Manager/master/smartapps/darwinsden/tesla-powerwall-manager.src/tesla-powerwall-manager.groovy",
       "required": true,
       "oauth": false,
-      "version": "0.3.83"
+      "version": "0.3.84"
     }
   ],
   "drivers": [
