@@ -22,7 +22,8 @@ String version() {
     return "v0.3.83.20240216"
 }
 
-/* 
+/*  
+ * 05-Apr-2024 >>> v0.3.84.20240405 - Correct for apparent Tesla server API change relating to Battery Percentage. Thanks to @NeilR.
  * 16-Feb-2024 >>> v0.3.83.20240216 - Re-add Backup-Only mode with deprecated warning.
  * 16-Feb-2024 >>> v0.3.82.20240216 - Add battery capacity/total energy - thank you D. Mills for the code snippet. Added grid charging enable/
  *                                    disable to scheduler. Removed Tesla deprecated calls from scheduler (set TOU-Strategy, set Backup-Only mode)
@@ -2097,8 +2098,20 @@ def processSiteLiveStatusResponse(response, callData) {
                 updateIfChanged(child, "currentCapacity", data.total_pack_energy.toInteger())
             }
           
-            runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: child.currentValue("reservePercent")]]) 
-        }
+            runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: child.currentValue("reservePercent")]])
+        } else if(data.percentage_charged != null) {    // Added by NeilR 3/23/2024 - duplicated above and edited
+            logger ("Using 'percentage_charged' for battery level","debug")
+            float batteryPercent = data.percentage_charged.toFloat()
+            float bpRounded = Math.round(batteryPercent * 10)/10 //rounded to one decimal place 
+            updateIfChanged(child, "battery", (bpRounded + 0.5).toInteger())
+            updateIfChanged(child, "batteryPercent", bpRounded)
+            if (!connectedToGateway()) {
+                //Gateway value may be slightly different from server. Need to verify. Use gateway value only for now if available. 
+                // //updateIfChanged(child, "currentCapacity", data.total_pack_energy.toInteger())
+            }
+            runIn(1, checkBatteryNotifications, [data: [batteryPercent: bpRounded, reservePercent: child.currentValue("reservePercent")]])        
+        }     
+        
         Integer powerDelta = settings.powerThreshold?.toInteger() ?: 100
         Boolean powerChanged = 
            updateIfChanged(child, "loadPower", data.load_power.toInteger(), powerDelta) |
